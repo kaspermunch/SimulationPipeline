@@ -25,6 +25,6 @@ setup(name=package_name,
       packages = find_packages(exclude=['ez_setup']),
       package_dir = {package_name: package_name},
       include_package_data = True,
-#       entry_points = { 'console_scripts': [ 'sap = SAP.ConsoleScripts:function_name', ],
-#                        },
+      entry_points = { 'console_scripts': [ 'run_simulation_pipeline = SimulationPipeline.Utils:runSimulationsWithCoaSimScript', ],
+                       },
       )
