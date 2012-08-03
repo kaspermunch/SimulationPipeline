@@ -1,0 +1,45 @@
+
+alphabet=DNA
+# The DATA variable is set in the simulation script:
+input.sequence.file=$(DATA)
+input.sequence.format=Fasta
+input.sequence.multiparts=no
+input.sequence.sites_to_use=all
+
+
+analysis=estimate
+
+# NOTE: Here use the same values as for bppSeqGen:
+model = GTR(a=1., b=0.14, c=0.24, d=0.24, e=0.34, theta=0.40, theta1=0.50, theta2=0.50)
+rate_distribution = Gamma(n=4, alpha=1.24)
+#rate_distribution=Uniform
+
+optimize=yes
+
+# coalmethod=Divergence( nbSpecies=2, species1='0', species2='1', tau1=$(tau1), tau1.min=0., tau2=$(tau2), tau2.min=0.0001, theta12=$(theta12), theta.min=0.0001, theta1=theta12, theta2=theta12, median=no, rho=$(rho), rho.min=0.0001, numberOfClasses=$(nbClasses) )
+# optimization.pre=no
+# input.sequence.max_gap_allowed=101%
+# analysis.method=rescaled
+
+coalmethod=ILS(implementation=09,nbSpecies=3,species1='1',species2='2',species3='0',outgroup='3', tau1=$(tau1), tau2=$(tau2), c2=$(c2), theta1=$(theta1), theta2=$(theta2), median=no, rho=$(rho),     tau.min = 0.0001, theta.min=0.0001, rho.min=0.0001, rho.max=1000)
+coalmethod.model=basic
+optimization.pre=yes
+
+
+optimization.reparametrization=no
+optimization.method=fullD
+optimization.verbose=2
+optimization.tolerance=0.000001
+optimization.max_number_f_eval=1000000
+
+optimization.profiler=$(DATA).profile
+optimization.message_handler=$(DATA).messages
+
+optimization.max_number_iterations=500 
+optimization.ignore_parameter=GTR.a,GTR.b,GTR.c,GTR.d,GTR.e,GTR.theta,GTR.theta1,GTR.theta2
+optimization.final=no
+
+output.posterior.states=
+output.posterior.values=$(DATA).posterior.tbl
+output.estimated.parameters=$(DATA).params.txt
+output.userfriendly.parameters=$(DATA).user.txt
