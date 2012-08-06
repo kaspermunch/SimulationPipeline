@@ -10,11 +10,13 @@ from optparse import OptionParser
 
 def runSimulationsWithCoaSimScript():
 
-    usage="""%prog [options] [inputFile [outputFile]]
+    usage="""%prog [options] specFileName, pickleOutputFileName, coalhmmOptionsFile
 
-This program ....
-It also does ..."""
-
+This program runs the simulation pipeline and takes the following arguments:
+ - a specification python file
+ - the name of the file to write the pickled result to
+ - an option file for coalhmm
+"""
 
     parser = OptionParser(usage=usage, version="%prog 1.0")
 
@@ -28,14 +30,19 @@ It also does ..."""
 #                      dest="minprob",
                       type="float",
                       default=0.5,
-                      help="Print status output to STDERR")
+                      help="Minimal probability flanking recombination window")
     parser.add_option("--maxspan",
 #                      dest="maxspan",
                       type="float",
                       default=float('inf'),
-                      help="Print status output to STDERR")
+                      help="Maximal size of recombination windows reported")
 
     (options, args) = parser.parse_args()
+
+    if len(args) > 3:
+        parser.error("Too many arguments")
+    if len(args) < 3:
+        parser.error("Too few arguments")
 
     specFileName, pickleOutputFileName, coalhmmOptionsFile = args
 
