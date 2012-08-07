@@ -46,7 +46,7 @@ This program runs the simulation pipeline and takes the following arguments:
 
     specFileName, pickleOutputFileName, coalhmmOptionsFile = args
 
-    Utils.runSimulationsWithCoaSim(specFileName, pickleOutputFileName, options.minprob, options.maxspan, coalhmmOptionsFile)
+    runSimulationsWithCoaSim(specFileName, pickleOutputFileName, options.minprob, options.maxspan, coalhmmOptionsFile)
 
 
 def runSimulationsWithMaCS(inp, outp, minProb, maxSpan, coalhmmOptionsFile, ):
