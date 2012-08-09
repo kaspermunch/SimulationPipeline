@@ -796,7 +796,7 @@ def estimate_ils09(sequence, **args):
 
 #     p = subprocess.Popen(cmd + " " + param, shell=True, cwd=coalhmm_dir)
 #     p.wait()
-    print cmd + " " + param
+#    print cmd + " " + param
     p = subprocess.Popen(cmd + " " + param, env=os.environ, shell=True, cwd=coalhmm_dir, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     stdout, stderr = p.communicate()
 #     print stdout

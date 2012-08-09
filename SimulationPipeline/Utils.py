@@ -5,7 +5,7 @@ from CoaSim.popStructure import Population as P, Sample as S, Merge as M, Migrat
 from SimulationPipeHotSpotCTMC import *
 from newick.tree import Leaf
 from CoalhmmPipeline import Table
-import Needle
+from MultiPurpose import Needle
 from optparse import OptionParser
 
 def runSimulationsWithCoaSimScript():
@@ -16,6 +16,7 @@ This program runs the simulation pipeline and takes the following arguments:
  - a specification python file
  - the name of the file to write the pickled result to
  - an option file for coalhmm
+ - an option file for bppseqgen
 """
 
     parser = OptionParser(usage=usage, version="%prog 1.0")
@@ -39,20 +40,28 @@ This program runs the simulation pipeline and takes the following arguments:
 
     (options, args) = parser.parse_args()
 
-    if len(args) > 3:
+    if len(args) > 4:
         parser.error("Too many arguments")
-    if len(args) < 3:
+    if len(args) < 4:
         parser.error("Too few arguments")
 
-    specFileName, pickleOutputFileName, coalhmmOptionsFile = args
+    specFileName, pickleOutputFileName, coalhmmOptionsFile, bppseqgenOptionsFile = args
 
-    runSimulationsWithCoaSim(specFileName, pickleOutputFileName, options.minprob, options.maxspan, coalhmmOptionsFile)
+    runSimulationsWithCoaSim(specFileName, pickleOutputFileName, options.minprob, options.maxspan, coalhmmOptionsFile, bppseqgenOptionsFile)
 
 
-def runSimulationsWithMaCS(inp, outp, minProb, maxSpan, coalhmmOptionsFile, ):
+def runSimulationsWithMaCS(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bppseqgenOptionsFile):
     """
     Simulate a number of 
     """
+
+    assert os.path.exists(os.path.abspath(coalhmmOptionsFile)) and os.path.exists(os.path.abspath(bppseqgenOptionsFile))
+
+    with open(os.path.abspath(coalhmmOptionsFile)) as f:
+        coalhmmModelLines = sorted([" ".join(x.split()) for x in f.readlines() if x.startswith('model ') or x.startswith('rate_distribution ')])
+    with open(os.path.abspath(bppseqgenOptionsFile)) as f:
+        bppseqgenModelLines = sorted([" ".join(x.split()) for x in f.readlines() if x.startswith('model ') or x.startswith('rate_distribution ')])
+    assert coalhmmModelLines == bppseqgenModelLines, "model and rate distributions lines not identical in coalhmm and bppseqgen option files"
 
     import imp
     SimSpec = imp.new_module("SimSpec")
@@ -65,12 +74,12 @@ def runSimulationsWithMaCS(inp, outp, minProb, maxSpan, coalhmmOptionsFile, ):
         seq = simulateMaCS(length=SimSpec.L, NeRef=SimSpec.NeRef, r=SimSpec.r, g=SimSpec.g, u=SimSpec.u, addOutGroup=SimSpec.addOutGroup, \
                            T1=SimSpec.T1, T12=SimSpec.T12, T123=SimSpec.T123, \
                            N1=SimSpec.N1, N2=SimSpec.N2, N3=SimSpec.N3, N12=SimSpec.N12, N123=SimSpec.N123, \
-                           optionsFile=os.path.abspath("bppSeqGen.options"), hook=simHook, recMap=SimSpec.recMap)
+                           optionsFile=os.path.abspath(bppseqgenOptionsFile), hook=simHook, recMap=SimSpec.recMap)
     else:
         seq = simulateMaCS(length=SimSpec.L, NeRef=SimSpec.NeRef, r=SimSpec.r, g=SimSpec.g, u=SimSpec.u, addOutGroup=SimSpec.addOutGroup, \
                            T1=SimSpec.T1, T12=SimSpec.T12, T123=SimSpec.T123, \
                            N1=SimSpec.N1, N2=SimSpec.N2, N3=SimSpec.N3, N12=SimSpec.N12, N123=SimSpec.N123, \
-                           optionsFile=os.path.abspath("bppSeqGen.options"), hook=simHook)
+                           optionsFile=os.path.abspath(bppseqgenOptionsFile), hook=simHook)
 
     assert len(simHook.recombinationPoints) == len(simHook.trees) - 1, "%s vs %s" % (len(simHook.recombinationPoints), len(simHook.trees) - 1)
 
@@ -134,22 +143,30 @@ def runSimulationsWithMaCS(inp, outp, minProb, maxSpan, coalhmmOptionsFile, ):
     with open(outp, 'w') as f:
         pickle.dump(stats, f)
 
-    os.system("cp " + seq + "* tmp_macs/.")
+#    os.system("cp " + seq + "* tmp_macs/.")
 
     for f in glob.glob(seq + "*"):
         os.unlink(f)
 
 
-def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile):
+def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bppseqgenOptionsFile):
     """
     Simulate a number of 
     """
+
+    assert os.path.exists(os.path.abspath(coalhmmOptionsFile)) and os.path.exists(os.path.abspath(bppseqgenOptionsFile))
+
+    with open(os.path.abspath(coalhmmOptionsFile)) as f:
+        coalhmmModelLines = sorted([" ".join(x.split()) for x in f.readlines() if x.startswith('model ') or x.startswith('rate_distribution ')])
+    with open(os.path.abspath(bppseqgenOptionsFile)) as f:
+        bppseqgenModelLines = sorted([" ".join(x.split()) for x in f.readlines() if x.startswith('model ') or x.startswith('rate_distribution ')])
+    assert coalhmmModelLines == bppseqgenModelLines, "model and rate distributions lines not identical in coalhmm and bppseqgen option files"
 
     import imp
     SimSpec = imp.new_module("SimSpec")
     exec open(inp).read() in SimSpec.__dict__
     sys.modules[SimSpec] = "SimSpec"
-
+    
     def spec(**args):
         c1 = args["N1"] / args["NeRef"]
         c2 = args["N2"] / args["NeRef"]
@@ -168,12 +185,12 @@ def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile):
         seq = simulateCoasim(spec, length=SimSpec.L, NeRef=SimSpec.NeRef, r=SimSpec.r, g=SimSpec.g, u=SimSpec.u, addOutGroup=SimSpec.addOutGroup, \
                              T1=SimSpec.T1, T12=SimSpec.T12, T123=SimSpec.T123, \
                              N1=SimSpec.N1, N2=SimSpec.N2, N3=SimSpec.N3, N12=SimSpec.N12, N123=SimSpec.N123, \
-                             optionsFile=os.path.abspath("bppSeqGen.options"), hook=simHook, recMap=SimSpec.recMap)
+                             optionsFile=os.path.abspath(bppseqgenOptionsFile), hook=simHook, recMap=SimSpec.recMap)
     else:
         seq = simulateCoasim(spec, length=SimSpec.L, NeRef=SimSpec.NeRef, r=SimSpec.r, g=SimSpec.g, u=SimSpec.u, addOutGroup=SimSpec.addOutGroup, \
                              T1=SimSpec.T1, T12=SimSpec.T12, T123=SimSpec.T123, \
                              N1=SimSpec.N1, N2=SimSpec.N2, N3=SimSpec.N3, N12=SimSpec.N12, N123=SimSpec.N123, \
-                             optionsFile=os.path.abspath("bppSeqGen.options"), hook=simHook)
+                             optionsFile=os.path.abspath(bppseqgenOptionsFile), hook=simHook)
 
     assert len(simHook.recombinationPoints) == len(simHook.recombinationTimes), "%s vs %s" % (len(simHook.recombinationPoints), len(simHook.recombinationTimes))
     assert len(simHook.recombinationPoints) == len(simHook.trees) - 1, "%s vs %s" % (len(simHook.recombinationPoints), len(simHook.trees) - 1)
@@ -251,7 +268,9 @@ def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile):
         with open(outp, 'w') as f:
             pickle.dump(stats, f)
 
-        #os.system("cp " + seq + "* tmp_coasim/.")
+#         os.system("cp " + seq + "* .")
+#         print seq
+#         sys.exit()
 
     for f in glob.glob(seq + "*"):
         os.unlink(f)
