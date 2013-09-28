@@ -1,4 +1,6 @@
-import CoaSim, os, tempfile, sys, subprocess, re, random
+import sys
+#sys.path.insert(0, '/Users/kasper/Desktop/coasim_trunk/Python/build/lib.macosx-10.5-x86_64-2.7')
+import CoaSim, os, tempfile, subprocess, re, random
 import cPickle as pickle
 from CoaSim.popStructure import Population as P, Sample as S, Merge as M
 from newick import *
@@ -19,25 +21,296 @@ from newick.tree import Leaf
 # bppseqgen_dir = None
 
 coalhmm_exe = "./coalhmm --noninteractive=yes"
-#coalhmm_dir = os.path.join(os.path.dirname(__file__), 'coalhmmOSX')
-coalhmm_dir = "."
+coalhmm_dir = os.path.join(os.path.dirname(__file__), 'coalhmmOSX')
+#coalhmm_dir = "."
 
 macs_exe = "./macs-patched"
 macs_dir = "./scripts/Simulation/macsOSX"
 
 bppseqgen_exe = "./bppseqgen --noninteractive=yes" # specify exe in current dir
-#bppseqgen_dir = os.path.join(os.path.dirname(__file__), 'bppseqgenOSX')
-bppseqgen_dir = "."
+bppseqgen_dir = os.path.join(os.path.dirname(__file__), 'bppseqgenOSX')
+#bppseqgen_dir = "."
+
+
+# cmtc hook:
+from coalhmm.optimize import default_bps
+from coalhmm.mini_hmm import calc_forward_backward
+
+from scipy import zeros, array, arange, int16, around
+from scipy.weave import inline
+from scipy import *
+
+# run ctmc
+from runCTMC import runILSctmc
+
+class CTMCilsHook(object):
+
+    def __init__(self, **kwargs):
+        vars(self).update(kwargs)
+        self.expectedTransitions = list()
+
+    def run(self, modelILS, COL_MAP, all_obs, est_c, est_r, est_m, est_t):
+
+        def fill_table(F, T, E, n, m, S, obs):
+            assert 0 <= n < m < len(obs)
+            K = m - n
+            assert S > 0 and K > 0
+            assert F.shape == (S,)
+            assert T.shape == (S, S)
+            assert E.shape[0] == S
+
+            Tnm_prev = zeros((S,K))
+            Tnm = zeros((S,K))
+            Tnm_prev[:,0] = F[:]
+
+            for xm in obs[n:m]:
+                Tnm_prev = Tnm_prev / Tnm_prev.sum()
+                #print around(Tnm_prev, 4)
+                #Tnm_prev = (Tnm_prev.T / Tnm_prev.sum(axis=1)).T
+                for s in xrange(S):
+                    for k in xrange(K):
+                        x = Tnm_prev[s,k] * T[s,s]
+                        if k > 0:
+                            for sm in xrange(S):
+                                if sm != s:
+                                    x += Tnm_prev[sm, k-1]*T[sm,s]
+                        Tnm[s,k] = x*E[s, xm]
+                Tnm_prev,Tnm = Tnm,Tnm_prev
+            Tnm_prev = Tnm_prev / Tnm_prev.sum()
+            #print around(Tnm_prev, 4)
+            #Tnm_prev = (Tnm_prev.T / Tnm_prev.sum(axis=1)).T
+            return Tnm_prev
+
+        def fill_table_fast(F, T, E, n, m, S, obs):
+            assert 0 <= n < m < len(obs)
+            K = m - n
+            assert S > 0 and K > 0
+            assert F.shape == (S,)
+            assert T.shape == (S, S)
+            assert E.shape[0] == S
+
+            Tnm_prev = zeros((S,K))
+            Tnm = zeros((S,K))
+            Tnm_prev[:,0] = F[:]
+
+            support_code = """
+            void normalize_slice_inplace(double *slice, int S, int K) {
+                int i;
+                double sum = 0;
+                for (i = 0; i < S*K; i++)
+                    sum += slice[i];
+                double norm = 1.0 / sum;
+                for (i = 0; i < S*K; i++)
+                    slice[i] *= norm;
+            }
+            void print_slice(double *slice, int S, int K) {
+                int s,k;
+                for (s = 0; s < S; s++)
+                {
+                    for (k = 0; k < K; k++)
+                    {
+                        printf("%0.4f\\t", slice[s*K + k]);
+                    }
+                    printf("\\n");
+                }
+            }
+            """
+            code = """
+            #line 119 "rekomb.py"
+            short *xmi = obs + n; // including n
+            short *xme = obs + m; // excluding m
+            for ( ; xmi != xme; xmi++ )
+            {
+                int xm = *xmi;
+                normalize_slice_inplace(Tnm_prev, S, K);
+                //print_slice(Tnm_prev, S, K);
+                #pragma omp parallel for schedule(dynamic, 100)
+                for (int k = 0; k < K; k++)
+                {
+                    for (int s = 0; s < S; s += 1)
+                    {
+                        double x = Tnm_prev[s*K + k] * T[s*S + s];
+                        for (int sm = 0; k > 0 && sm < S; sm++)
+                        {
+                            if (sm != s)
+                                x += Tnm_prev[sm*K + k-1] * T[sm*S + s];
+                        }
+                        Tnm[s*K + k] = x*E2(s, xm);
+                    }
+                }
+                double *tmp = Tnm; Tnm = Tnm_prev; Tnm_prev = tmp;
+            }
+            normalize_slice_inplace(Tnm_prev, S, K);
+            //print_slice(Tnm_prev, S, K);
+            """
+
+            inline(code, support_code=support_code,
+                   arg_names=['Tnm','Tnm_prev','S','K','m','n','obs','T','E'],
+                   ## extra_compile_args=["-fopenmp"],
+                   ## extra_objects=["-fopenmp"]
+                   )
+
+            # Just doing pointer swaps in the C code won't change what the python
+            # objects point to. So if there has been an odd number of swaps the
+            # result is stored in Tnm, and otherwise in Tnm_prev
+            if K % 2 == 1:
+                return Tnm
+            else:
+                return Tnm_prev
+
+        # matrices for forward backrward
+        def get_matrices(model, col_map, c, r, m, t):
+            noBrPointsPerEpoch = model.nbreakpoints
+            nleaves = model.nleaves
+            all_time_breakpoints, time_breakpoints = default_bps(model, c, r, t)
+
+            M = []
+            for e in xrange(len(noBrPointsPerEpoch)):
+                newM = identity(nleaves)
+                newM[:] = m[e]
+                M.append(newM)
+
+            pi, T, E = model.run(r, c, time_breakpoints, M, col_map=col_map)
+            return pi, T, E
+
+        pi, T, E = get_matrices(modelILS, COL_MAP, est_c, est_r, est_m, est_t)
+        pi = array(pi, dtype=float64)
+        T = array(T, dtype=float64)
+        E = array(E, dtype=float64)
+        E = E / E.sum(axis=1).reshape((E.shape[0],1))
+        T = T / T.sum(axis=1)
+
+        obs = all_obs[0]
+        A, B, C1, logL = calc_forward_backward(pi,T,E, obs)
+
+        winsize = int(self.winsize)
+        L = int(self.L)
+
+        def transitions_in_window(F, B, n, d, transitions, emissions, obs):
+            m = n+d-1
+            K = m-n
+            Tnm = fill_table_fast(F, transitions, emissions, n, m, len(transitions), obs)
+            #Tnm = fill_table(F, transitions, emissions, n, m, len(transitions), obs)
+            res = zeros(K)
+            for k in range(K):
+                res[k] = (Tnm[:,k]*B).sum()
+            #s = "\t".join(map(str, res))
+            res = res / res.sum()
+            #extra = ' '.join(map(str, around(res[0:10], 10)))
+            res = res * arange(0, K)
+            return res.sum()#, extra
+
+
+        S = A.shape[1]
+        B = B / B.sum(axis=1).reshape((L,1))
+
+        for i, w in enumerate(range(0, L-winsize, winsize)):
+            nrExpected = transitions_in_window(A[w,:], B[w+winsize-1,:], w, winsize, T, E, obs)
+            print >>sys.stderr, nrExpected
+            self.expectedTransitions.append(nrExpected)
+
+# 
+# import sys
+# import os
+# 
+# import coalhmm
+# from coalhmm.model import build_epoch_seperated_model
+# from coalhmm.optimize import logL_multiseq, readObservations
+# from scipy import *
+# from scipy.optimize import fmin
+# 
+# # In this example the col map will be based on the actual observations in the file
+# COL_MAP = dict()
+# 
+# 
+# from coalhmm.mini_hmm import calc_forward
+# def logLikelihood_for_Ronly(model, F, B, obs, c,r,m,t):
+#     def ronly_forward(pi, T, E, obs):
+#         forward_s, scales_s, logL_s = calc_forward(F, T, E, obs)
+#         forward_s[-1,:] *= scales_s[-1]
+#         forward_s[-1,:] = forward_s[-1,:] * B
+#         scales_s[-1] = forward_s[-1,:].sum()
+#         return log(scales_s).sum()
+# 
+#     def ronly_prepare(pi, T, E):
+#         return (array(pi, dtype=float64),
+#                 array(T, dtype=float64),
+#                 array(E, dtype=float64))
+#     return logL_multiseq(model, [obs], COL_MAP, c,r,m,t, prepare_matrices=ronly_prepare, single_logL=ronly_forward)
+# 
+# def optimize_f(model, obs, f_logL, init):
+#     return fmin(lambda x: -f_logL(model, obs, *x), init, full_output=True, disp=False)
+# 
+# def estimate_Ronly(model, obs, F, B, T, C, R, outfile='/dev/stdout'):
+#     def logL_all(model, obs, r):
+#         r = exp(r)
+#         if r <= 0:
+#             return -1e18
+#         res = logLikelihood_for_Ronly(model, F,B, obs, [C]*2, [r]*2, [0.0]*2, [0.0,T])
+#         os.system("echo '%s' >> %s" % ('\t'.join(map(str, [r, res])), outfile))
+#         return res
+#     os.system("echo '%s' > %s" % ('\t'.join(map(str, ["R", "logL"])), outfile))
+#     est, L, _, _, _ = optimize_f(model, obs, logL_all, (log(R),))
+#     #       logL.   estimates
+#     return (L, list([exp(est[0])]))
+# 
+# 
+# for seq in seqs:
+#     obs, _ = readObservations(seq, names, COL_MAP)
+#     all_obs.append(obs)
+# 
+# L = int(1e6)
+# winsize = int(100e3)
+# stepsize = int(10e3)
+# 
+# obs = all_obs[0]
+# 
+# 
+# S = len(modelI.tree_map)
+# dummy = ones(S)/S
+# 
+# outfile = open("data/x_%i.logL" % (inst), 'w')
+# maxL, est = estimate_Ronly(modelI, obs, dummy,dummy, i_t, i_c, i_r)
+# estR = est[0]
+# 
+# for a in range(0, L-winsize, stepsize):
+#     b = a + winsize
+#     L1, est1 = estimate_Ronly(modelI, obs[a:b], dummy,dummy, i_t, i_c, i_r, outfile='/dev/null')
+#     L2, est2 = estimate_Ronly(modelI, obs[a:b], dummy,dummy, i_t, i_c, estR, outfile='/dev/null')
+#     print >>outfile, inst, a,b, L1,est1[0], L2,est2[0]
+#     print            inst, a,b, L1,est1[0], L2,est2[0]
+# 
+# outfile.close()
+
 
 class CoaSimSimulationHook(object):
 
     def __init__(self):
         self.recombinationTimes = []
         self.recombinationPoints = []
+        self.recombinationLeaves = []
         self.trees = []
 
     def run(self, arg, trees, args):
 
+        def collect_leaves(node):
+
+            processed_nodes = set()
+
+            def recurse(node):
+                if isinstance(node, CoaSim.LeafNode):
+                    return [node.sampleID]
+                else:
+                    res = []
+                    for child in node.children:
+                        if child.coreID not in processed_nodes:
+                            res.extend(recurse(child))
+                            processed_nodes.add(child.coreID)
+                    return res
+
+            return tuple(recurse(node))
+
+        ######################################
         # loop over nodes in the arg and collect recombination points and times:
         recombinationEvents = dict()
         for n in arg.nodes:            
@@ -48,6 +321,20 @@ class CoaSimSimulationHook(object):
         for p, t in sorted(recombinationEvents.items()):
             self.recombinationPoints.append(int(round(p  * args["length"])))
             self.recombinationTimes.append(int(round(t * (2.0*args["NeRef"]) * args["g"])))
+
+        # version of the above code commented out because this functionality has a memory leak in CoaSim
+        ## # loop over nodes in the arg and collect recombination points and times:
+        ## recombinationEvents = dict()
+        ## for n in arg.nodes:            
+        ##     if isinstance(n, CoaSim.RecombinationNode) and n.isAncestral(n.recombinationPoint):
+        ##         recombinationEvents[n.recombinationPoint] = (n.eventTime, sorted(collect_leaves(n)))
+
+        ## # sort and scale points and times:
+        ## for p, (t, l) in sorted(recombinationEvents.items()):
+        ##     self.recombinationPoints.append(int(round(p  * args["length"])))
+        ##     self.recombinationTimes.append(int(round(t * (2.0*args["NeRef"]) * args["g"])))
+        ##     self.recombinationLeaves.append(l)
+        ######################################
 
         # get the tree for each interval
         for interval in arg.intervals:
@@ -128,12 +415,21 @@ class ILS09estimationHook(object):
         f.next() # remove header
         prevPos = 0
         pos = 0
+        ilsBases = 0
+        non_ilsBases = 0
+
         for l in f:
             lst = map(float, l.split()[1:5])
             #argmax = lambda lst: max(izip(lst, xrange(len(lst))))[1]
             maxProb = max(lst)
             self.infStates.append(lst.index(maxProb))
             state = lst.index(maxProb)
+            assert state <= 3, state
+            if state <= 1:
+                non_ilsBases += 1
+            elif state >= 2:
+                ilsBases += 1
+                
             if maxProb > self.minProb:
                 #if prevState is not None and state != prevState:
                 if prevState is not None and state != prevState and pos - prevPos < self.maxSpan:
@@ -144,56 +440,61 @@ class ILS09estimationHook(object):
                 prevState, prevPos = state, pos
             pos += 1
 
+        self.ilsBases = ilsBases
+        self.non_ilsBases = non_ilsBases
 
-class CTMCestimationHook(object):
-
-    def __init__(self):
-        self.startCoord = []
-        self.endCoord = []
-        self.fromState = list()
-        self.toState = list()
-        self.infStates = list()
-
-    def run(self, prefix, args):
-        f = open("%s_model.pickle")
-        model = pickle.load(f)
-        f.close()
-        tree_map = model.treemap
-        # PARSE MODEL TO SO WE CAN DISTINGUISH MODELS WITH DIFFERENT TOPOLOGIES AND WIGHIN THOSE WHAT THE BRANCHLENGTHS (IN TERMS OF BINS) ARE....
-
-        prevInferredState = None
-        prevState = None
-        prevPos = None
-        f = open(prefix + "_pds.txt", 'r')
-        f.next() # remove header
-        prevPos = 0
-        pos = 0
-        for l in f:
-            lst = map(float, l.split()[1:5])
-            #argmax = lambda lst: max(izip(lst, xrange(len(lst))))[1]
-            maxProb = max(lst)
-            self.infStates.append(lst.index(maxProb))
-            if maxProb > 2.0 / args["nstates"]:
-                state = lst.index(maxProb)
-                if prevState is not None and state != prevState:
-                    self.startCoord.append(prevPos)
-                    self.endCoord.append(pos)
-                    self.fromState.append(prevState)
-                    self.toState.append(state)
-                prevState, prevPos = state, pos
-            pos += 1
+# class CTMCestimationHook(object):
+# 
+#     def __init__(self):
+#         self.startCoord = []
+#         self.endCoord = []
+#         self.fromState = list()
+#         self.toState = list()
+#         self.infStates = list()
+# 
+#     def run(self, prefix, args):
+#         f = open("%s_model.pickle")
+#         model = pickle.load(f)
+#         f.close()
+#         tree_map = model.treemap
+#         # PARSE MODEL TO SO WE CAN DISTINGUISH MODELS WITH DIFFERENT TOPOLOGIES AND WIGHIN THOSE WHAT THE BRANCHLENGTHS (IN TERMS OF BINS) ARE....
+# 
+#         prevInferredState = None
+#         prevState = None
+#         prevPos = None
+#         f = open(prefix + "_pds.txt", 'r')
+#         f.next() # remove header
+#         prevPos = 0
+#         pos = 0
+#         for l in f:
+#             lst = map(float, l.split()[1:5])
+#             #argmax = lambda lst: max(izip(lst, xrange(len(lst))))[1]
+#             maxProb = max(lst)
+#             self.infStates.append(lst.index(maxProb))
+#             if maxProb > 2.0 / args["nstates"]:
+#                 state = lst.index(maxProb)
+#                 if prevState is not None and state != prevState:
+#                     self.startCoord.append(prevPos)
+#                     self.endCoord.append(pos)
+#                     self.fromState.append(prevState)
+#                     self.toState.append(state)
+#                 prevState, prevPos = state, pos
+#             pos += 1
 
 class TreeHeight(tree.TreeVisitor):
     def __init__(self):
         self.height = 0
         self.max = 0
-
+        self.depths = list()
+        
     def reset(self):
         TreeHeight.__init__(self)
-    def result(self):
-        return self.max
-    def get_result(self):
-        return self.max
+# 
+#     def result(self):
+#         return self.max
+# 
+#     def get_result(self):
+#         return self.max
 
     def pre_visit_edge(self,src,bootstrap,length,dst):
         self.height = self.height + length
@@ -201,7 +502,8 @@ class TreeHeight(tree.TreeVisitor):
         
     def post_visit_edge(self,src,bootstrap,length,dst):
         self.height = self.height - length
-
+        self.depths.append(self.height)
+        
 class LeafCount(tree.TreeVisitor):
     def __init__(self):
         self.count = 0
@@ -251,9 +553,13 @@ def addOutGroup(trees, **args):
     
     for (s,e,t) in oldtrees:
         th.max = 0
+        th.depths = []
         lc.count = 0
         t.dfs_traverse(th)
         t.dfs_traverse(lc)
+
+#         print t
+#         print [th.max - x for x in th.depths]
 
         new_height = get_tau(lc.count +1, **args)
 
@@ -294,6 +600,7 @@ def bppSeqGen(trees, **args):
     if "logFile" in args:
         logfilestd = " > " + args["logFile"]
 
+    
     cmd = bppseqgen_exe + " param=" + str(args["optionsFile"]) + " number_of_sites=" + \
         str(args["length"]) + " input.tree.file=" + path1 + " output.sequence.file=" + path2 + \
               logfilestd
@@ -796,7 +1103,7 @@ def estimate_ils09(sequence, **args):
 
 #     p = subprocess.Popen(cmd + " " + param, shell=True, cwd=coalhmm_dir)
 #     p.wait()
-#    print cmd + " " + param
+#     print cmd + " " + param
     p = subprocess.Popen(cmd + " " + param, env=os.environ, shell=True, cwd=coalhmm_dir, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     stdout, stderr = p.communicate()
 #     print stdout
@@ -805,151 +1112,40 @@ def estimate_ils09(sequence, **args):
         print "estimation failed"
         return None
 
-
+#    sequence = '/var/folders/8j/_27xl8wd6vn5krws659zcr1h0000gn/T/tmpAkZskf'
     if "hook" in args:
         args["hook"].run(sequence, args)
-
+    
     input_t = Table.Table().add_row(_tau1=T1 * u * 2 * NeRef * g, _tau2=(T12-T1) * u * 2 * NeRef * g, \
                               _c2=((T123- T12) * NeRef - 4/3 * N123) * u * 2 * g, _theta1=N12 * u * 2 * g, \
                               _theta2=N123 * u * 2 * g, _rho=r / (u * g), _theta12=N12 * u * 2 * g)
 
     return Table.Table().load_kv(sequence + ".user.txt").join(input_t)
- 
-# # def estimate_untitled_3_all(seq, T1, T2, C, R, nstates=5):
-# #     def logL_all(model, obs, colmap, c):
-# #         if min([c]) <= 0:
-# #             return -1e18
-# # 	print "C =", c
-# #         return logLikelihood(model, obs, colmap, [c,c], [R,R], [0.0,0.0], [0.0,T1])
-# # 
-# #     #antal epoker i model 2, hvad de konvergerer til 0, antal states i de epoker hhv. 1, nstates
-# #     ssplit = build_epoch_seperated_model(2, [[0,0]], [1,nstates], None)
-# #     names = ["'0'", "'1'"]
-# #     est = optimize_f(seq, ssplit, names, logL_all, (C,))
-# #     
-# #     obs, colmap = readObservations(seq, names)
-# #     _, pd, tbps, pi = logLikelihood(ssplit, obs, colmap, [est[0],est[0]], [R,R], [0.0,0.0], [0.0,T1], posterior_decoding=True)
-# # 
-# #     print pd.get_no_rows(), "x", pd.get_no_columns()
-# # 
-# #     f_bps = open("bps.txt", "w")
-# #     print >>f_bps, "\t".join(map(str, tbps))
-# #     f_bps.close()
-# #     f_pi = open("pi.txt", "w")
-# #     print >>f_pi, "\t".join([str(pi[x]) for x in xrange(len(pi))])
-# #     f_pi.close()
-# # 
-# #     pd_file = open("pds.txt", "w")
-# #     print >>pd_file, matrix_to_string(pd)
-# #     pd_file.close()
-# # 
-# #     return Table.Table().add_row(C=est[0],R=R,tau_1=T1)
-# 
-# 
-# 
-# def print_matrix_to_file(M, f):
-#     for row in xrange(M.get_no_rows()):
-#         line = []
-#         for col in xrange(M.get_no_columns()):
-#             line.append(str(M[row,col]))
-#         print >>f, ("\t".join(line))
-# 
-# def matrix_to_string(M):
-#     res = []
-#     for row in xrange(M.get_no_rows()):
-#         sub_res = []
-#         for col in xrange(M.get_no_columns()):
-#             sub_res.append(str(M[row,col]))
-#         res.append("\t".join(sub_res))
-#     return "\n".join(res)
-# 
-# import sys
-# sys.path.append( "/users/aeh/birc/working/" )
-# sys.path.append( "/users/aeh/parredhmm/boostpython/" )
-# sys.path.append( "/users/asand/public_html/" )
-# #/users/aeh/birc/CoaSim/coasim-python-1.2/Python/build/lib.linux-i686-2.4/
-# sys.path.append( "/users/aeh/birc/nymodel")
-# import os
-# 
-# from model import build_epoch_seperated_model, build_simple_model
-# from optimize import logLikelihood, readObservations
-# from scipy.optimize import fmin
-# 
-# def optimize_f(model, obs, f_logL, init):
-#     return fmin(lambda x: -f_logL(model, obs, *x), init)
-# 
-# def estimate_untitled_all_Nblocks(model, obs, T1, T2, C, R, outfile="/dev/null"):
-#     def logL_all(model, all_obs, t1, t2, c, r):
-#         if min([t1,t2,c,r]) <= 0 or t2 <= t1:
-#             return -1e18
-#         res = 0
-#         for obs, colmap in all_obs:
-#             res += logLikelihood(model, obs, colmap, [c]*3, [r]*3, [0.0]*3, [0.0,t1,t2])
-#         os.system("echo '%s' >> %s" % ('\t'.join(map(str, [t1, t2, c, r, res])), outfile))
-#         return res
-# 
-#     os.system("echo '%s' > %s" % ('\t'.join(map(str, ["t1", "t2", "c", "r", "logL"])), outfile))
-#     est = optimize_f(model, obs, logL_all, (T1,T2,C,R))
-# 
-#     #       t1,     t2,     c,      r
-#     return (est[0], est[1], est[2], est[3])
-# 
-# def estimate_3sp_ctmc(sequence, **args):
-# 
-# #     NeRef = N1 = N2 = N3 = 30000.0
-# #     N12 = 30000.0
-# #     N123 = 30000.0
-# #     g = 20
-# #     T1 = 0.5e6 
-# #     T12 = 5e6
-# #     L = 500e3 # 500 kbp
-# #     r = 1.5e-8
-# #     u = 1e-9
-#     N1 = args["N1"]
-#     T1 = args["T1"]
-#     T2 = args["T2"]
-#     r = args["r"]
-#     u = args["u"]
-#     g = args["g"]
-#     nstates = args["nstates"]
-# 
-#     prefix = "ctmc_test"
-# 
-# #     if args["N1"] != args["N2"] or args["N1"] != args["N12"] or args["N1"] != args["N123"]:
-# #         raise Exception("only one pop size allowed")
-# 
-#     model = build_epoch_seperated_model(3, [[0,0,1], [0,0]], [1,nstates,nstates], None)
-# 
-#     names = ["'0'", "'1'", "'2'"]
-#     seqs = [sequence]
-#     all_obs = []
-#     for seq in seqs:
-#         obs, colmap = readObservations(seq, names)
-#         all_obs.append((obs, colmap))
-# 
-#     e_t1, e_t2, e_c, e_r = estimate_untitled_all_Nblocks(model, all_obs, T1 * u, T2 * u, 1.0/(N1 * u * 2*g), r/(u*g), outfile="%s_progress.txt" % prefix)
-# 
-#     obs, colmap = all_obs[0]
-#     logL, pd, tbps, pi, pi_count, T_count, E_count = logLikelihood(model, obs, colmap, [e_c,e_c,e_c], [e_r,e_r,e_r], [0.0,0.0,0.0], [0.0,e_t1,e_t2], posterior_decoding=True)
-# 
-#     import cPickle as pickle
-#     f = open("%s_model.pickle" % prefix, 'w')
-#     pickle.dump(model, f)
-#     f.close()
-# 
-#     f_bps = open("%s_bps.tbl" % prefix, "w")
-#     print >>f_bps, "\t".join(map(str, tbps))
-#     f_bps.close()
-#     
-#     f_pi = open("%s_pi.tbl" % prefix, "w")
-#     print >>f_pi, "\t".join([str(pi[x]) for x in xrange(len(pi))])
-#     f_pi.close()
-# 
-#     pd_file = open("%s_pds.txt" % prefix, "w")
-#     print_matrix_to_file(pd, pd_file)
-#     pd_file.close()
-# 
-#     if "hook" in args:
-#         args["hook"].run(prefix, args)
-# 
-#     return(Table.Table().add_row(C=e_c,R=e_r,tau_1=e_t1,tau_2=e_t2))
+
+
+def estimate_ctmcILS(sequence, **args):
+
+    likelihood, estimates, startvalues = runILSctmc([sequence], **args)
+
+    u, g = args['u'], args['g']
+    return Table.Table().add_row(_u = u,
+                                 _g = g,
+                                 _r = startvalues["i_r"]*u,
+                                 _c1 = startvalues["i_c1"],
+                                 _c2 = startvalues["i_c2"],
+                                 _c3 = startvalues["i_c3"],
+                                 _N1 = 1.0/(2*g*u*startvalues['i_c1']),
+                                 _N12 = 1.0/(2*g*u*startvalues['i_c2']),
+                                 _N123 = 1.0/(2*g*u*startvalues['i_c3']),
+                                 _T12 = startvalues['i_t1'] * 2 * g / u,
+                                 _T123 = startvalues['i_t2'] * 2 * g / u,
+                                 r = estimates["i_r"]*u,
+                                 c1 = estimates["i_c1"],
+                                 c2 = estimates["i_c2"],
+                                 c3 = estimates["i_c3"],
+                                 N1 = 1.0/(2*g*u*estimates['i_c1']),
+                                 N12 = 1.0/(2*g*u*estimates['i_c2']),
+                                 N123 = 1.0/(2*g*u*estimates['i_c3']),
+                                 T12 = estimates['i_t1'] * 2 * g / u,
+                                 T123 = estimates['i_t2'] * 2 * g / u)
+
