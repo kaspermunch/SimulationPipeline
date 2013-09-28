@@ -43,9 +43,9 @@ cmake -DCMAKE_INSTALL_PREFIX=$DIR/local
 make
 make install
 
-# curl http://download.gna.org/bppsuite/sources/bppsuite-0.6.0.tar.gz -o bppsuite-0.6.0.tar.gz
-# tar xfvz bppsuite-0.6.0.tar.gz
-# cd bppsuite-0.6.0
+# curl http://download.gna.org/bppsuite/sources/bppsuite-0.7.0.tar.gz -o bppsuite-0.7.0.tar.gz
+# tar xfvz bppsuite-0.7.0.tar.gz
+# cd bppsuite-0.7.0
 # cmake -DCMAKE_INSTALL_PREFIX=../local
 
 
