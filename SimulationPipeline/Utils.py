@@ -1,5 +1,6 @@
 
 import sys, os, glob
+#sys.path.insert(0, '/Users/kasper/Desktop/coasim_trunk/Python/build/lib.macosx-10.5-x86_64-2.7')
 import CoaSim
 from CoaSim.popStructure import Population as P, Sample as S, Merge as M, Migration as Mi, Growth
 from SimulationPipeHotSpotCTMC import *
@@ -48,6 +49,51 @@ This program runs the simulation pipeline and takes the following arguments:
     specFileName, pickleOutputFileName, coalhmmOptionsFile, bppseqgenOptionsFile = args
 
     runSimulationsWithCoaSim(specFileName, pickleOutputFileName, options.minprob, options.maxspan, coalhmmOptionsFile, bppseqgenOptionsFile)
+
+
+
+def runSimulationsWithCoaSimAndILSCTMCScript():
+
+    usage="""%prog [options] specFileName, pickleOutputFileName, coalhmmOptionsFile
+
+This program runs the simulation pipeline and takes the following arguments:
+ - a specification python file
+ - the name of the file to write the pickled result to
+ - an option file for coalhmm
+ - an option file for bppseqgen
+"""
+
+    parser = OptionParser(usage=usage, version="%prog 1.0")
+
+    parser.add_option("-v", "--verbose",
+                      action="store_true",
+                      dest="verbose",
+                      #type="string",
+                      default=False,
+                      help="Print status output to STDERR")
+    parser.add_option("--minprob",
+#                      dest="minprob",
+                      type="float",
+                      default=0.5,
+                      help="Minimal probability flanking recombination window")
+    parser.add_option("--maxspan",
+#                      dest="maxspan",
+                      type="float",
+                      default=float('inf'),
+                      help="Maximal size of recombination windows reported")
+
+    (options, args) = parser.parse_args()
+
+    if len(args) > 3:
+        parser.error("Too many arguments")
+    if len(args) < 3:
+        parser.error("Too few arguments")
+
+    specFileName, pickleOutputFileName, bppseqgenOptionsFile = args
+
+    runSimulationsWithCoaSimAndILSCTMC(specFileName, pickleOutputFileName, bppseqgenOptionsFile)
+
+
 
 
 def runSimulationsWithMaCS(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bppseqgenOptionsFile):
@@ -113,13 +159,31 @@ def runSimulationsWithMaCS(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bpps
             return right[0].identifier
 
     for i in range(len(simHook.trees)-1):
-        leftExtLeaf, rightExtLeaf = getTreeExternalLeaf(simHook.trees[i]),  getTreeExternalLeaf(simHook.trees[i+1])
-#         print 'left', simHook.trees[i], leftExtLeaf
-#         print 'right', simHook.trees[i+1], rightExtLeaf
-        if leftExtLeaf != rightExtLeaf:
+
+        #######################################################
+        leftCoalTimes = getCoalTimes(simHook.trees[i])
+        rightCoalTimes = getCoalTimes(simHook.trees[i+1])
+        t12 = SimSpec.T12 / SimSpec.g / (2*SimSpec.NeRef)
+        leftState = stateMap[leftExtLeaf]
+        if leftState == 0 and min(leftCoalTimes) > t12:
+            leftState = 1
+        rightState = stateMap[rightExtLeaf]
+        if rightState == 0 and min(rightCoalTimes) > t12:
+            rightState = 1
+        if leftState != rightState:
             recPoints.append(simHook.recombinationPoints[i])
-            fromState.append(stateMap[leftExtLeaf])
-            toState.append(stateMap[rightExtLeaf])
+            recTimes.append(simHook.recombinationTimes[i])
+            fromState.append(leftState)
+            toState.append(rightState)
+        #######################################################
+
+#         leftExtLeaf, rightExtLeaf = getTreeExternalLeaf(simHook.trees[i]),  getTreeExternalLeaf(simHook.trees[i+1])
+# #         print 'left', simHook.trees[i], leftExtLeaf
+# #         print 'right', simHook.trees[i+1], rightExtLeaf
+#         if leftExtLeaf != rightExtLeaf:
+#             recPoints.append(simHook.recombinationPoints[i])
+#             fromState.append(stateMap[leftExtLeaf])
+#             toState.append(stateMap[rightExtLeaf])
 
     # run coalhmm on simulated sequences:	
     estimHook = ILS09estimationHook(minProb, maxSpan)
@@ -203,13 +267,17 @@ def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bp
     # filter the recombination events to extract recombinations resulting in diffent topologies:
     recPoints = list()
     recTimes = list()
+    recLeaves = list()
     fromState = list()
     toState = list()
     simStates = list()
     isSameTree = list()
     isSameTopology = list()
+    isSameState = list()
     allRecPoints = list()
     allRecTimes = list()
+    allRecLeaves = list()
+    #simCoalTimes = list()
 
     def getTreeExternalLeaf(tree):
         left, right = tree.get_edges()
@@ -218,19 +286,44 @@ def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bp
         else:
             return right[0].identifier
 
+    def getCoalTimes(tree):        
+        th = TreeHeight()
+        tree.dfs_traverse(th)
+        return sorted(list(set(th.max - x for x in th.depths)))
+
+
     for i in range(len(simHook.trees)-1):
         leftExtLeaf, rightExtLeaf = getTreeExternalLeaf(simHook.trees[i]),  getTreeExternalLeaf(simHook.trees[i+1])
 
-        isSameTree.append(int(str(simHook.trees[i]) == str(simHook.trees[i+1])))
-        isSameTopology.append(int(leftExtLeaf == rightExtLeaf))
-        allRecPoints.append(simHook.recombinationPoints[i])
-        allRecTimes.append(simHook.recombinationTimes[i])
-
-        if leftExtLeaf != rightExtLeaf:
+        #######################################################
+        leftCoalTimes = getCoalTimes(simHook.trees[i])
+        rightCoalTimes = getCoalTimes(simHook.trees[i+1])
+        #simCoalTimes.append([x * SimSpec.g * 2 * SimSpec.NeRef for x in sorted(leftCoalTimes)])
+        t12 = SimSpec.T12 / SimSpec.g / (2*SimSpec.NeRef)
+        leftState = stateMap[leftExtLeaf]
+        if leftState == 0 and min(leftCoalTimes) > t12:
+            leftState = 1
+        rightState = stateMap[rightExtLeaf]
+        if rightState == 0 and min(rightCoalTimes) > t12:
+            rightState = 1
+        if leftState != rightState:
             recPoints.append(simHook.recombinationPoints[i])
             recTimes.append(simHook.recombinationTimes[i])
-            fromState.append(stateMap[leftExtLeaf])
-            toState.append(stateMap[rightExtLeaf])
+            # commented out because this functionality has a memory leak in CoaSim
+            #recLeaves.append(simHook.recombinationLeaves[i])
+            fromState.append(leftState)
+            toState.append(rightState)
+        #######################################################
+
+
+        isSameTree.append(int(str(simHook.trees[i]) == str(simHook.trees[i+1])))
+        isSameTopology.append(int(leftExtLeaf == rightExtLeaf))
+        isSameState.append(int(leftState == rightState))
+        allRecPoints.append(simHook.recombinationPoints[i])
+        allRecTimes.append(simHook.recombinationTimes[i])
+        # commented out because this functionality has a memory leak in CoaSim
+        #allRecLeaves.append(simHook.recombinationLeaves[i])
+
 
     # run coalhmm on simulated sequences:	
     estimHook = ILS09estimationHook(minProb, maxSpan)
@@ -246,10 +339,14 @@ def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bp
     ## os.system("cp %s sequence1.fasta" % seq)
 
     if t is not None:
-        stats = { 'simRecPoints': recPoints,
+        stats = { 'ilsBases': estimHook.ilsBases,
+                  'non_ilsBases': estimHook.non_ilsBases,
+                  'simRecPoints': recPoints,
                   'simRecTimes': recTimes,
+                  'simRecLeaves': recLeaves,
                   'simFromState': fromState,
                   'simToState': toState,
+                  #'simCoalTimes': simCoalTimes,
                   'infRecPoints': [estimHook.startCoord[i] + (estimHook.endCoord[i] - estimHook.startCoord[i])/2.0 for i in range(len(estimHook.startCoord))],
                   'infStartCoords': estimHook.startCoord,
                   'infEndCoords': estimHook.endCoord,
@@ -257,13 +354,168 @@ def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bp
                   'infToState': estimHook.toState,
                   'allSimRecPoints': allRecPoints,
                   'allSimRecTimes': allRecTimes,
+                  'allSimRecLeaves': allRecLeaves,
                   'isSameTree': isSameTree,
                   'isSameTopology': isSameTopology,
+                  'isSameState': isSameState,
                   'simParameters': dict([(k, str(v[0])) for k, v in t.data.items() if k.startswith('_')]),
                   'infParameters': dict([(k, v[0].strip()) for k, v in t.data.items() if not k.startswith('_')]),
                   'seqLength': SimSpec.L }
     #               'simParameters': dict([(k, v) for k, v in t.data.items() if k.startswith('_')]),
     #               'infParameters': dict([(k, v) for k, v in t.data.items() if not k.startswith('_')])}
+
+        with open(outp, 'w') as f:
+            pickle.dump(stats, f)
+
+#         os.system("cp " + seq + "* .")
+#         print seq
+#         sys.exit()
+
+    for f in glob.glob(seq + "*"):
+        os.unlink(f)
+
+
+def runSimulationsWithCoaSimAndILSCTMC(inp, outp, bppseqgenOptionsFile):
+    """
+    Simulate a number of 
+    """
+
+    assert os.path.exists(os.path.abspath(bppseqgenOptionsFile))
+
+    import imp
+    SimSpec = imp.new_module("SimSpec")
+    exec open(inp).read() in SimSpec.__dict__
+    sys.modules[SimSpec] = "SimSpec"
+    
+    def spec(**args):
+        c1 = args["N1"] / args["NeRef"]
+        c2 = args["N2"] / args["NeRef"]
+        c3 = args["N3"] / args["NeRef"]
+        c12 = args["N12"] / args["NeRef"]
+        c123 = args["N123"] / args["NeRef"]
+        t1 = args["T1"] / args["g"] / (2*args["NeRef"])
+        t12 = args["T12"] / args["g"] / (2*args["NeRef"])
+        t123 = args["T123"] / args["g"] / (2*args["NeRef"])
+        speciesTree = P(c123, M(t12, [P(c3, S(1)), P(c12, M(t1, [P(c1, S(1)), P(c2, S(1))]))]))
+        return speciesTree
+
+    # simulate:
+    simHook = CoaSimSimulationHook()
+    if "recMap" in dir(SimSpec):
+        seq = simulateCoasim(spec, length=SimSpec.L, NeRef=SimSpec.NeRef, r=SimSpec.r, g=SimSpec.g, u=SimSpec.u, addOutGroup=SimSpec.addOutGroup, \
+                             T1=SimSpec.T1, T12=SimSpec.T12, T123=SimSpec.T123, \
+                             N1=SimSpec.N1, N2=SimSpec.N2, N3=SimSpec.N3, N12=SimSpec.N12, N123=SimSpec.N123, \
+                             optionsFile=os.path.abspath(bppseqgenOptionsFile), hook=simHook, recMap=SimSpec.recMap)
+    else:
+        seq = simulateCoasim(spec, length=SimSpec.L, NeRef=SimSpec.NeRef, r=SimSpec.r, g=SimSpec.g, u=SimSpec.u, addOutGroup=SimSpec.addOutGroup, \
+                             T1=SimSpec.T1, T12=SimSpec.T12, T123=SimSpec.T123, \
+                             N1=SimSpec.N1, N2=SimSpec.N2, N3=SimSpec.N3, N12=SimSpec.N12, N123=SimSpec.N123, \
+                             optionsFile=os.path.abspath(bppseqgenOptionsFile), hook=simHook)
+
+    assert len(simHook.recombinationPoints) == len(simHook.recombinationTimes), "%s vs %s" % (len(simHook.recombinationPoints), len(simHook.recombinationTimes))
+    assert len(simHook.recombinationPoints) == len(simHook.trees) - 1, "%s vs %s" % (len(simHook.recombinationPoints), len(simHook.trees) - 1)
+
+
+    # mapping between externa leaf label and state corresponding to the tree. note that
+    # the simulated states do not distinguish state 0 and 1. so some 0s are really 1s
+    stateMap = {"0": 0, "1": 3, "2": 2}
+
+    # filter the recombination events to extract recombinations resulting in diffent topologies:
+    recPoints = list()
+    recTimes = list()
+    recLeaves = list()
+    fromState = list()
+    toState = list()
+    simStates = list()
+    isSameTree = list()
+    isSameTopology = list()
+    isSameState = list()
+    allRecPoints = list()
+    allRecTimes = list()
+    allRecLeaves = list()
+    #simCoalTimes = list()
+    
+    def getTreeExternalLeaf(tree):
+        left, right = tree.get_edges()
+        if isinstance(left[0], Leaf):
+            return left[0].identifier
+        else:
+            return right[0].identifier
+
+    def getCoalTimes(tree):        
+        th = TreeHeight()
+        tree.dfs_traverse(th)
+        return sorted(list(set(th.max - x for x in th.depths)))
+
+
+    for i in range(len(simHook.trees)-1):
+        leftExtLeaf, rightExtLeaf = getTreeExternalLeaf(simHook.trees[i]),  getTreeExternalLeaf(simHook.trees[i+1])
+
+        #######################################################
+        leftCoalTimes = getCoalTimes(simHook.trees[i])
+        rightCoalTimes = getCoalTimes(simHook.trees[i+1])
+        #simCoalTimes.append([x * SimSpec.g * 2 * SimSpec.NeRef for x in sorted(leftCoalTimes)])
+        t12 = SimSpec.T12 / SimSpec.g / (2*SimSpec.NeRef)
+        leftState = stateMap[leftExtLeaf]
+        if leftState == 0 and min(leftCoalTimes) > t12:
+            leftState = 1
+        rightState = stateMap[rightExtLeaf]
+        if rightState == 0 and min(rightCoalTimes) > t12:
+            rightState = 1
+        if leftState != rightState:
+            recPoints.append(simHook.recombinationPoints[i])
+            recTimes.append(simHook.recombinationTimes[i])
+            # commented out because this functionality has a memory leak in CoaSim
+            #recLeaves.append(simHook.recombinationLeaves[i])
+            fromState.append(leftState)
+            toState.append(rightState)
+        #######################################################
+
+
+        isSameTree.append(int(str(simHook.trees[i]) == str(simHook.trees[i+1])))
+        isSameTopology.append(int(leftExtLeaf == rightExtLeaf))
+        isSameState.append(int(leftState == rightState))
+        allRecPoints.append(simHook.recombinationPoints[i])
+        allRecTimes.append(simHook.recombinationTimes[i])
+        # commented out because this functionality has a memory leak in CoaSim
+        #allRecLeaves.append(simHook.recombinationLeaves[i])
+
+    # run coalhmm on simulated sequences:	
+    estimHook = CTMCilsHook(L=SimSpec.L, winsize=SimSpec.winsize)
+    t = estimate_ctmcILS(seq, length=SimSpec.L, NeRef=SimSpec.NeRef, r=SimSpec.r, g=SimSpec.g, u=SimSpec.u,
+                         addOutGroup=SimSpec.addOutGroup, T1=SimSpec.T1, T12=SimSpec.T12, T123=SimSpec.T123,
+                         N1=SimSpec.N1, N2=SimSpec.N2, N3=SimSpec.N3, N12=SimSpec.N12, N123=SimSpec.N123,
+                         hook=estimHook)
+
+    if t is not None:
+
+        from MultiPurpose import TimeSeries as TS
+        observedTreeChanges = zip( *TS.summaryStats(allRecPoints, binIdx=0, binSize=SimSpec.winsize, stats=lambda buf: TS.poissonRateWithCI(buf, binSize=SimSpec.winsize)) )[2]
+        observedTopologyChanges = zip( *TS.summaryStats(recPoints, binIdx=0, binSize=SimSpec.winsize, stats=lambda buf: TS.poissonRateWithCI(buf, binSize=SimSpec.winsize)) )[2]
+
+        for tree, topol, exp in zip(observedTreeChanges, observedTopologyChanges, estimHook.expectedTransitions):
+            print tree, topol, exp
+        
+        stats = { 'simRecPoints': recPoints,
+                  'simRecTimes': recTimes,
+                  'simRecLeaves': recLeaves,
+                  'simFromState': fromState,
+                  'simToState': toState,
+                  'allSimRecPoints': allRecPoints,
+                  'allSimRecTimes': allRecTimes,
+                  'allSimRecLeaves': allRecLeaves,
+                  #'simCoalTimes': simCoalTimes,
+                  'isSameTree': isSameTree,
+                  'isSameTopology': isSameTopology,
+                  'isSameState': isSameState,
+                  'observedTreeChanges': observedTreeChanges,
+                  'observedTopologyChanges': observedTopologyChanges,
+                  'expectedTransitions': estimHook.expectedTransitions,
+                  'expectedTransitionsWinsize': SimSpec.winsize,                  
+                  'simParameters': dict([(k, str(v[0])) for k, v in t.data.items() if k.startswith('_')]),
+                  'infParameters': dict([(k, str(v[0])) for k, v in t.data.items() if not k.startswith('_')]),
+                  'seqLength': SimSpec.L }
+
 
         with open(outp, 'w') as f:
             pickle.dump(stats, f)
@@ -336,7 +588,8 @@ def evaluateSimulations(inp, outp):
             stats["simRecTimes"] = ['NA'] * len(stats["simRecPoints"])
 
         def stateMap(x):
-            l = [0, 0, 2, 3] # simulations do not distinguish state 0 and 1
+            ## l = [0, 0, 2, 3] # simulations do not distinguish state 0 and 1
+            l = [0, 1, 2, 3] # simulations do not distinguish state 0 and 1
             return l[x]
 
 
@@ -391,7 +644,7 @@ def evaluateSimulations(inp, outp):
                             prevSimPos = traceback[j][0]
                             break
                     j = i
-                    while j < len(simRecPoints)-1:
+                    while j < len(traceback)-1:
                         j += 1
                         if traceback[j][0] is not None:
                             nextSimPos = traceback[j][0]
@@ -482,6 +735,14 @@ def evaluateSimulations(inp, outp):
         # NOTE: here we delete 0 to 0 inferred events because these are not represented in simulated events we compare to
         infRecPoints = [t for t in zip(stats['infRecPoints'], map(stateMap, stats['infFromState']), map(stateMap, stats['infToState']), stats['infStartCoords'], stats['infEndCoords']) if t[1] != t[2]]
 
+        if not len(infRecPoints):
+            print "WARNING: DID NOT INFER ANY RECOMBINATIONS - SKIPPING"
+            continue
+
+        if not len(simRecPoints):
+            print "WARNING: DID NOT SIMULATE ANY RECOMBINATIONS - SKIPPING"
+            continue
+
         randomShuffle = False
         
         alignSeries(simRecPoints, infRecPoints)
@@ -495,7 +756,9 @@ def evaluateSimulations(inp, outp):
         intervalsDict = dict()
         for i, t in zip(intervals, infF):
             intervalsDict.setdefault(t, []).append(i)
-        intervalsDict[infT[-1]].append(stats["seqLength"] - infP[-1])
+        #intervalsDict[infT[-1]].append(stats["seqLength"] - infP[-1])
+        intervalsDict.setdefault(infT[-1], []).append(stats["seqLength"] - infP[-1])
+
         # random indexes
         indexes = range(len(infRecPoints))
         random.shuffle(indexes)
