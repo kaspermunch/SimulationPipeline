@@ -1,5 +1,5 @@
 
-coaSimLeafHack = True
+coaSimLeafHack = False
 
 import sys
 if coaSimLeafHack:
