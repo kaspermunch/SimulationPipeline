@@ -1,5 +1,9 @@
+
+coaSimLeafHack = True
+
 import sys
-#sys.path.insert(0, '/Users/kasper/Desktop/coasim_trunk/Python/build/lib.macosx-10.5-x86_64-2.7')
+if coaSimLeafHack:
+    sys.path.insert(0, '/Users/kasper/Desktop/coasim_trunk/Python/build/lib.macosx-10.5-x86_64-2.7')
 import CoaSim, os, tempfile, subprocess, re, random
 import cPickle as pickle
 from CoaSim.popStructure import Population as P, Sample as S, Merge as M
@@ -311,29 +315,30 @@ class CoaSimSimulationHook(object):
             return tuple(recurse(node))
 
         ######################################
-        # loop over nodes in the arg and collect recombination points and times:
-        recombinationEvents = dict()
-        for n in arg.nodes:            
-            if isinstance(n, CoaSim.RecombinationNode) and n.isAncestral(n.recombinationPoint):
-                recombinationEvents[n.recombinationPoint] = n.eventTime
+        if coaSimLeafHack:
+            # version of the below code commented out because this functionality has a memory leak in CoaSim
+            # loop over nodes in the arg and collect recombination points and times:
+            recombinationEvents = dict()
+            for n in arg.nodes:            
+                if isinstance(n, CoaSim.RecombinationNode) and n.isAncestral(n.recombinationPoint):
+                    recombinationEvents[n.recombinationPoint] = (n.eventTime, sorted(collect_leaves(n)))
 
-        # sort and scale points and times:
-        for p, t in sorted(recombinationEvents.items()):
-            self.recombinationPoints.append(int(round(p  * args["length"])))
-            self.recombinationTimes.append(int(round(t * (2.0*args["NeRef"]) * args["g"])))
+            # sort and scale points and times:
+            for p, (t, l) in sorted(recombinationEvents.items()):
+                self.recombinationPoints.append(int(round(p  * args["length"])))
+                self.recombinationTimes.append(int(round(t * (2.0*args["NeRef"]) * args["g"])))
+                self.recombinationLeaves.append(l)
+        else:
+            # loop over nodes in the arg and collect recombination points and times:
+            recombinationEvents = dict()
+            for n in arg.nodes:            
+                if isinstance(n, CoaSim.RecombinationNode) and n.isAncestral(n.recombinationPoint):
+                    recombinationEvents[n.recombinationPoint] = n.eventTime
 
-        # version of the above code commented out because this functionality has a memory leak in CoaSim
-        ## # loop over nodes in the arg and collect recombination points and times:
-        ## recombinationEvents = dict()
-        ## for n in arg.nodes:            
-        ##     if isinstance(n, CoaSim.RecombinationNode) and n.isAncestral(n.recombinationPoint):
-        ##         recombinationEvents[n.recombinationPoint] = (n.eventTime, sorted(collect_leaves(n)))
-
-        ## # sort and scale points and times:
-        ## for p, (t, l) in sorted(recombinationEvents.items()):
-        ##     self.recombinationPoints.append(int(round(p  * args["length"])))
-        ##     self.recombinationTimes.append(int(round(t * (2.0*args["NeRef"]) * args["g"])))
-        ##     self.recombinationLeaves.append(l)
+            # sort and scale points and times:
+            for p, t in sorted(recombinationEvents.items()):
+                self.recombinationPoints.append(int(round(p  * args["length"])))
+                self.recombinationTimes.append(int(round(t * (2.0*args["NeRef"]) * args["g"])))
         ######################################
 
         # get the tree for each interval

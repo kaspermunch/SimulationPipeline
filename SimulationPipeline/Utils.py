@@ -1,6 +1,8 @@
 
 import sys, os, glob
-#sys.path.insert(0, '/Users/kasper/Desktop/coasim_trunk/Python/build/lib.macosx-10.5-x86_64-2.7')
+from SimulationPipeHotSpotCTMC import coaSimLeafHack
+if coaSimLeafHack:
+    sys.path.insert(0, '/Users/kasper/Desktop/coasim_trunk/Python/build/lib.macosx-10.5-x86_64-2.7')
 import CoaSim
 from CoaSim.popStructure import Population as P, Sample as S, Merge as M, Migration as Mi, Growth
 from SimulationPipeHotSpotCTMC import *
@@ -140,6 +142,7 @@ def runSimulationsWithMaCS(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bpps
     simStates = list()
 
     def getTreeExternalLeaf(tree):
+
 #         left, right = tree.get_edges()
 #         if isinstance(left[0], Leaf):
 #             return left[0].identifier
@@ -309,8 +312,9 @@ def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bp
         if leftState != rightState:
             recPoints.append(simHook.recombinationPoints[i])
             recTimes.append(simHook.recombinationTimes[i])
-            # commented out because this functionality has a memory leak in CoaSim
-            #recLeaves.append(simHook.recombinationLeaves[i])
+            if coaSimLeafHack:
+                # commented out because this functionality has a memory leak in CoaSim
+                recLeaves.append(simHook.recombinationLeaves[i])
             fromState.append(leftState)
             toState.append(rightState)
         #######################################################
@@ -321,8 +325,9 @@ def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bp
         isSameState.append(int(leftState == rightState))
         allRecPoints.append(simHook.recombinationPoints[i])
         allRecTimes.append(simHook.recombinationTimes[i])
-        # commented out because this functionality has a memory leak in CoaSim
-        #allRecLeaves.append(simHook.recombinationLeaves[i])
+        if coaSimLeafHack:
+            # commented out because this functionality has a memory leak in CoaSim
+            allRecLeaves.append(simHook.recombinationLeaves[i])
 
 
     # run coalhmm on simulated sequences:	
@@ -337,6 +342,10 @@ def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bp
     ## t = estimate_untitled_3_all(seq, T1 * u, T12 * u, 1.0/(N1 * u * 2*g), r/(u*g), nstates=10)
     ## t = estimate_untitled_3_all(seq, T1 * u, T12 * u, 1.0/(N1 * u * 2*g), r/(u*g), nstates=20, suffix= "_%s_%d" % (tag, iteration))
     ## os.system("cp %s sequence1.fasta" % seq)
+
+    if not coaSimLeafHack:
+        recLeaves = [-1] * length(simRecTimes)
+        allRecLeaves = [-1] * length(allRecLeaves)
 
     if t is not None:
         stats = { 'ilsBases': estimHook.ilsBases,
@@ -624,9 +633,9 @@ def evaluateSimulations(inp, outp):
                     true = 0
 
                 if simIdx is not None:
-                    simRecPoint, simFromState, simToState, simRecTime = simRecPoints[simIdx]
+                    simRecPoint, simFromState, simToState, simRecTime, simRecLeaf = simRecPoints[simIdx]
                 else:
-                    simRecPoint, simFromState, simToState, simRecTime  = 'NA', 'NA', 'NA', 'NA'
+                    simRecPoint, simFromState, simToState, simRecTime  = 'NA', 'NA', 'NA', 'NA', 'NA'
 
                 if infIdx is not None:
                     infRecPoint, infFromState, infToState, infStartCoord, infEndCoord = infRecPoints[infIdx]
@@ -704,6 +713,7 @@ def evaluateSimulations(inp, outp):
                         "aligned": aligned,
                         "true": true,
                         "simRecPoint": simRecPoint,
+                        "simRecLeaf": ''.join(map(str, simRecLeaf)),
                         "cumulSimRecPoint": cumulSimRecPoint,
                         "infRecPoint": infRecPoint,
                         "cumulInfRecPoint": cumulInfRecPoint,
@@ -731,9 +741,12 @@ def evaluateSimulations(inp, outp):
 #        print len(stats['infToState']), sum(x==y for x,y in zip(map(stateMap, stats['infFromState']), map(stateMap, stats['infToState'])))
 
 
-        simRecPoints = zip(stats['simRecPoints'], stats['simFromState'], stats['simToState'], stats['simRecTimes'])
+        simRecPoints = zip(stats['simRecPoints'], stats['simFromState'],
+                           stats['simToState'], stats['simRecTimes'], stats['simRecLeaves'])
         # NOTE: here we delete 0 to 0 inferred events because these are not represented in simulated events we compare to
-        infRecPoints = [t for t in zip(stats['infRecPoints'], map(stateMap, stats['infFromState']), map(stateMap, stats['infToState']), stats['infStartCoords'], stats['infEndCoords']) if t[1] != t[2]]
+        infRecPoints = [t for t in zip(stats['infRecPoints'], map(stateMap, stats['infFromState']),
+                                       map(stateMap, stats['infToState']), stats['infStartCoords'],
+                                       stats['infEndCoords']) if t[1] != t[2]]
 
         if not len(infRecPoints):
             print "WARNING: DID NOT INFER ANY RECOMBINATIONS - SKIPPING"
@@ -767,7 +780,15 @@ def evaluateSimulations(inp, outp):
         pos = 0
         for i in indexes:
             f, t = infF[i], infT[i]
-            d = intervalsDict[f].pop(random.randint(0, len(intervalsDict[f])-1))
+            try:
+                d = intervalsDict[f].pop(random.randint(0, len(intervalsDict[f])-1))
+            except ValueError:
+                # if len(intervalsDict[f])-1 is zero, representation may make it
+                # diffferent from the other zero, whicch makes it die...
+                if len(intervalsDict[f])-1 == 0:
+                    d = intervalsDict[f].pop(0)
+                else:
+                    raise ValueError
             pos += d
             newList.append( (pos, f, t, 'NA', 'NA') )
 
