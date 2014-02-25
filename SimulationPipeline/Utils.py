@@ -344,8 +344,8 @@ def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bp
     ## os.system("cp %s sequence1.fasta" % seq)
 
     if not coaSimLeafHack:
-        recLeaves = [-1] * length(simRecTimes)
-        allRecLeaves = [-1] * length(allRecLeaves)
+        recLeaves = [-1] * len(simRecTimes)
+        allRecLeaves = [-1] * len(allRecLeaves)
 
     if t is not None:
         stats = { 'ilsBases': estimHook.ilsBases,

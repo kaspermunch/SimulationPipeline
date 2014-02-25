@@ -1,5 +1,5 @@
 
-coaSimLeafHack = False
+coaSimLeafHack = True
 
 import sys
 if coaSimLeafHack:
@@ -286,6 +286,7 @@ class CTMCilsHook(object):
 # 
 # outfile.close()
 
+sys.setrecursionlimit(100000)
 
 class CoaSimSimulationHook(object):
 
@@ -1109,6 +1110,7 @@ def estimate_ils09(sequence, **args):
 #     p = subprocess.Popen(cmd + " " + param, shell=True, cwd=coalhmm_dir)
 #     p.wait()
 #     print cmd + " " + param
+#     sys.exit()
     p = subprocess.Popen(cmd + " " + param, env=os.environ, shell=True, cwd=coalhmm_dir, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     stdout, stderr = p.communicate()
 #     print stdout
