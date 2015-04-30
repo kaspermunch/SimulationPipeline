@@ -21,7 +21,7 @@ optimize=yes
 # input.sequence.max_gap_allowed=101%
 # analysis.method=rescaled
 
-coalmethod=ILS(implementation=09,nbSpecies=3,species1='1',species2='2',species3='0',outgroup='3', tau1=$(tau1), tau2=$(tau2), c2=$(c2), theta1=$(theta1), theta2=$(theta2), median=no, rho=$(rho),     tau.min = 0.0001, theta.min=0.0001, rho.min=0.0001, rho.max=1000)
+coalmethod=ILS(implementation=09,nbSpecies=3,species1='1',species2='2',species3='0',outgroup='3', tau1=$(tau1), tau2=$(tau2), c2=$(c2), theta1=$(theta1), theta2=$(theta2), median=no, rho=$(rho),     tau.min = 0.00001, theta.min=0.00001, rho.min=0.0001, rho.max=1000)
 coalmethod.model=basic
 optimization.pre=yes
 

@@ -1,5 +1,6 @@
 
-coaSimLeafHack = True
+#coaSimLeafHack = True
+coaSimLeafHack = False
 
 import sys
 if coaSimLeafHack:
@@ -9,6 +10,7 @@ import cPickle as pickle
 from CoaSim.popStructure import Population as P, Sample as S, Merge as M
 from newick import *
 from itertools import izip
+from time import sleep
 from numpy import arange
 
 from CoalhmmPipeline import Table
@@ -25,27 +27,28 @@ from newick.tree import Leaf
 # bppseqgen_dir = None
 
 coalhmm_exe = "./coalhmm --noninteractive=yes"
-coalhmm_dir = os.path.join(os.path.dirname(__file__), 'coalhmmOSX')
-#coalhmm_dir = "."
+#coalhmm_dir = os.path.join(os.path.dirname(__file__), 'coalhmmOSX')
+coalhmm_dir = "."
 
 macs_exe = "./macs-patched"
 macs_dir = "./scripts/Simulation/macsOSX"
 
 bppseqgen_exe = "./bppseqgen --noninteractive=yes" # specify exe in current dir
-bppseqgen_dir = os.path.join(os.path.dirname(__file__), 'bppseqgenOSX')
-#bppseqgen_dir = "."
+#bppseqgen_dir = os.path.join(os.path.dirname(__file__), 'bppseqgenOSX')
+bppseqgen_dir = "."
 
 
-# cmtc hook:
-from coalhmm.optimize import default_bps
-from coalhmm.mini_hmm import calc_forward_backward
+#
+## cmtc hook:
+#from coalhmm.optimize import default_bps
+#from coalhmm.mini_hmm import calc_forward_backward
+#
+#from scipy import zeros, array, arange, int16, around
+#from scipy.weave import inline
+#from scipy import *
 
-from scipy import zeros, array, arange, int16, around
-from scipy.weave import inline
-from scipy import *
-
-# run ctmc
-from runCTMC import runILSctmc
+## run ctmc
+#from runCTMC import runILSctmc
 
 class CTMCilsHook(object):
 
@@ -1113,12 +1116,15 @@ def estimate_ils09(sequence, **args):
 #     sys.exit()
     p = subprocess.Popen(cmd + " " + param, env=os.environ, shell=True, cwd=coalhmm_dir, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     stdout, stderr = p.communicate()
-#     print stdout
-#     print stderr
-    if "Oups... something abnormal happened!" in stderr or "Optimization failed because likelihood function returned NaN" in stderr:
-        print "estimation failed"
+    sleep(30)
+    #print stdout
+    #print stderr
+    if "Exception" in stderr or "Oups... something abnormal happened!" in stderr or "Optimization failed because likelihood function returned NaN" in stderr:
+        print stderr
         return None
-
+    if "Exception" in stdout:
+        print stdout
+        return None
 #    sequence = '/var/folders/8j/_27xl8wd6vn5krws659zcr1h0000gn/T/tmpAkZskf'
     if "hook" in args:
         args["hook"].run(sequence, args)
