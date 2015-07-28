@@ -103,7 +103,7 @@ def runSimulationsWithMaCS(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bpps
     Simulate a number of 
     """
 
-    assert os.path.exists(os.path.abspath(coalhmmOptionsFile)) and os.path.exists(os.path.abspath(bppseqgenOptionsFile))
+    assert os.path.exists(os.path.abspath(coalhmmOptionsFile)) and os.path.exists(os.path.abspath(bppseqgenOptionsFile)), "%s %s" % (coalhmmOptionsFile, bppseqgenOptionsFile)
 
     with open(os.path.abspath(coalhmmOptionsFile)) as f:
         coalhmmModelLines = sorted([" ".join(x.split()) for x in f.readlines() if x.startswith('model ') or x.startswith('rate_distribution ')])
@@ -221,7 +221,7 @@ def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bp
     Simulate a number of 
     """
 
-    assert os.path.exists(os.path.abspath(coalhmmOptionsFile)) and os.path.exists(os.path.abspath(bppseqgenOptionsFile))
+    assert os.path.exists(os.path.abspath(coalhmmOptionsFile)) and os.path.exists(os.path.abspath(bppseqgenOptionsFile)), "%s %s" % (coalhmmOptionsFile, bppseqgenOptionsFile)
 
     with open(os.path.abspath(coalhmmOptionsFile)) as f:
         coalhmmModelLines = sorted([" ".join(x.split()) for x in f.readlines() if x.startswith('model ') or x.startswith('rate_distribution ')])
@@ -344,8 +344,8 @@ def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bp
     ## os.system("cp %s sequence1.fasta" % seq)
 
     if not coaSimLeafHack:
-        recLeaves = [-1] * len(simRecTimes)
-        allRecLeaves = [-1] * len(allRecLeaves)
+        recLeaves = [-1] * len(recTimes)
+        allRecLeaves = [-1] * len(recLeaves)
 
     if t is not None:
         stats = { 'ilsBases': estimHook.ilsBases,
@@ -635,7 +635,7 @@ def evaluateSimulations(inp, outp):
                 if simIdx is not None:
                     simRecPoint, simFromState, simToState, simRecTime, simRecLeaf = simRecPoints[simIdx]
                 else:
-                    simRecPoint, simFromState, simToState, simRecTime  = 'NA', 'NA', 'NA', 'NA', 'NA'
+                    simRecPoint, simFromState, simToState, simRecTime, simRecLeaf = 'NA', 'NA', 'NA', 'NA', 'NA'
 
                 if infIdx is not None:
                     infRecPoint, infFromState, infToState, infStartCoord, infEndCoord = infRecPoints[infIdx]
