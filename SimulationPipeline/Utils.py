@@ -11,7 +11,7 @@ from CoalhmmPipeline import Table
 from MultiPurpose import Needle
 from optparse import OptionParser
 
-def runSimulationsWithCoaSimScript():
+def runSimulationsWithCoaSimAndILS09Script():
 
     usage="""%prog [options] specFileName, pickleOutputFileName, coalhmmOptionsFile
 
@@ -50,7 +50,49 @@ This program runs the simulation pipeline and takes the following arguments:
 
     specFileName, pickleOutputFileName, coalhmmOptionsFile, bppseqgenOptionsFile = args
 
-    runSimulationsWithCoaSim(specFileName, pickleOutputFileName, options.minprob, options.maxspan, coalhmmOptionsFile, bppseqgenOptionsFile)
+    runSimulationsWithCoaSimAndILS09(specFileName, pickleOutputFileName, options.minprob, options.maxspan, coalhmmOptionsFile, bppseqgenOptionsFile)
+
+
+def runSimulationsWithCoaSimAndILS16Script():
+
+    usage="""%prog [options] specFileName, pickleOutputFileName, coalhmmOptionsFile
+
+This program runs the simulation pipeline and takes the following arguments:
+ - a specification python file
+ - the name of the file to write the pickled result to
+ - an option file for coalhmm
+ - an option file for bppseqgen
+"""
+
+    parser = OptionParser(usage=usage, version="%prog 1.0")
+
+    parser.add_option("-v", "--verbose",
+                      action="store_true",
+                      dest="verbose",
+                      #type="string",
+                      default=False,
+                      help="Print status output to STDERR")
+    parser.add_option("--minprob",
+#                      dest="minprob",
+                      type="float",
+                      default=0.5,
+                      help="Minimal probability flanking recombination window")
+    parser.add_option("--maxspan",
+#                      dest="maxspan",
+                      type="float",
+                      default=float('inf'),
+                      help="Maximal size of recombination windows reported")
+
+    (options, args) = parser.parse_args()
+
+    if len(args) > 4:
+        parser.error("Too many arguments")
+    if len(args) < 4:
+        parser.error("Too few arguments")
+
+    specFileName, pickleOutputFileName, coalhmmOptionsFile, bppseqgenOptionsFile = args
+
+    runSimulationsWithCoaSimAndILS09(specFileName, pickleOutputFileName, options.minprob, options.maxspan, coalhmmOptionsFile, bppseqgenOptionsFile)
 
 
 
@@ -216,7 +258,7 @@ def runSimulationsWithMaCS(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bpps
         os.unlink(f)
 
 
-def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bppseqgenOptionsFile):
+def runSimulationsWithCoaSimAndILS09(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bppseqgenOptionsFile):
     """
     Simulate a number of 
     """
@@ -382,6 +424,175 @@ def runSimulationsWithCoaSim(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bp
 
     for f in glob.glob(seq + "*"):
         os.unlink(f)
+
+
+def runSimulationsWithCoaSimAndILS16(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bppseqgenOptionsFile):
+    """
+    Simulate a number of
+    """
+
+    assert os.path.exists(os.path.abspath(coalhmmOptionsFile)) and os.path.exists(os.path.abspath(bppseqgenOptionsFile)), "%s %s" % (coalhmmOptionsFile, bppseqgenOptionsFile)
+
+    with open(os.path.abspath(coalhmmOptionsFile)) as f:
+        coalhmmModelLines = sorted([" ".join(x.split()) for x in f.readlines() if x.startswith('model ') or x.startswith('rate_distribution ')])
+    with open(os.path.abspath(bppseqgenOptionsFile)) as f:
+        bppseqgenModelLines = sorted([" ".join(x.split()) for x in f.readlines() if x.startswith('model ') or x.startswith('rate_distribution ')])
+    assert coalhmmModelLines == bppseqgenModelLines, "model and rate distributions lines not identical in coalhmm and bppseqgen option files"
+
+    import imp
+    SimSpec = imp.new_module("SimSpec")
+    exec open(inp).read() in SimSpec.__dict__
+    sys.modules[SimSpec] = "SimSpec"
+
+    def spec(**args):
+        c1 = args["N1"] / args["NeRef"]
+        c2 = args["N2"] / args["NeRef"]
+        c3 = args["N3"] / args["NeRef"]
+        c12 = args["N12"] / args["NeRef"]
+        c123 = args["N123"] / args["NeRef"]
+        t1 = args["T1"] / args["g"] / (2*args["NeRef"])
+        t12 = args["T12"] / args["g"] / (2*args["NeRef"])
+        t123 = args["T123"] / args["g"] / (2*args["NeRef"])
+        speciesTree = P(c123, M(t12, [P(c3, S(1)), P(c12, M(t1, [P(c1, S(1)), P(c2, S(1))]))]))
+        return speciesTree
+
+    # simulate:
+    simHook = CoaSimSimulationHook()
+    if "recMap" in dir(SimSpec):
+        seq = simulateCoasim(spec, length=SimSpec.L, NeRef=SimSpec.NeRef, r=SimSpec.r, g=SimSpec.g, u=SimSpec.u, addOutGroup=SimSpec.addOutGroup, \
+                             T1=SimSpec.T1, T12=SimSpec.T12, T123=SimSpec.T123, \
+                             N1=SimSpec.N1, N2=SimSpec.N2, N3=SimSpec.N3, N12=SimSpec.N12, N123=SimSpec.N123, \
+                             optionsFile=os.path.abspath(bppseqgenOptionsFile), hook=simHook, recMap=SimSpec.recMap)
+    else:
+        seq = simulateCoasim(spec, length=SimSpec.L, NeRef=SimSpec.NeRef, r=SimSpec.r, g=SimSpec.g, u=SimSpec.u, addOutGroup=SimSpec.addOutGroup, \
+                             T1=SimSpec.T1, T12=SimSpec.T12, T123=SimSpec.T123, \
+                             N1=SimSpec.N1, N2=SimSpec.N2, N3=SimSpec.N3, N12=SimSpec.N12, N123=SimSpec.N123, \
+                             optionsFile=os.path.abspath(bppseqgenOptionsFile), hook=simHook)
+
+    assert len(simHook.recombinationPoints) == len(simHook.recombinationTimes), "%s vs %s" % (len(simHook.recombinationPoints), len(simHook.recombinationTimes))
+    assert len(simHook.recombinationPoints) == len(simHook.trees) - 1, "%s vs %s" % (len(simHook.recombinationPoints), len(simHook.trees) - 1)
+
+
+    # mapping between externa leaf label and state corresponding to the tree. note that
+    # the simulated states do not distinguish state 0 and 1. so some 0s are really 1s
+    stateMap = {"0": 0, "1": 3, "2": 2}
+
+    # filter the recombination events to extract recombinations resulting in diffent topologies:
+    recPoints = list()
+    recTimes = list()
+    recLeaves = list()
+    fromState = list()
+    toState = list()
+    simStates = list()
+    isSameTree = list()
+    isSameTopology = list()
+    isSameState = list()
+    allRecPoints = list()
+    allRecTimes = list()
+    allRecLeaves = list()
+    #simCoalTimes = list()
+
+    def getTreeExternalLeaf(tree):
+        left, right = tree.get_edges()
+        if isinstance(left[0], Leaf):
+            return left[0].identifier
+        else:
+            return right[0].identifier
+
+    def getCoalTimes(tree):
+        th = TreeHeight()
+        tree.dfs_traverse(th)
+        return sorted(list(set(th.max - x for x in th.depths)))
+
+
+    for i in range(len(simHook.trees)-1):
+        leftExtLeaf, rightExtLeaf = getTreeExternalLeaf(simHook.trees[i]),  getTreeExternalLeaf(simHook.trees[i+1])
+
+        #######################################################
+        leftCoalTimes = getCoalTimes(simHook.trees[i])
+        rightCoalTimes = getCoalTimes(simHook.trees[i+1])
+        #simCoalTimes.append([x * SimSpec.g * 2 * SimSpec.NeRef for x in sorted(leftCoalTimes)])
+        t12 = SimSpec.T12 / SimSpec.g / (2*SimSpec.NeRef)
+        leftState = stateMap[leftExtLeaf]
+        if leftState == 0 and min(leftCoalTimes) > t12:
+            leftState = 1
+        rightState = stateMap[rightExtLeaf]
+        if rightState == 0 and min(rightCoalTimes) > t12:
+            rightState = 1
+        if leftState != rightState:
+            recPoints.append(simHook.recombinationPoints[i])
+            recTimes.append(simHook.recombinationTimes[i])
+            if coaSimLeafHack:
+                # commented out because this functionality has a memory leak in CoaSim
+                recLeaves.append(simHook.recombinationLeaves[i])
+            fromState.append(leftState)
+            toState.append(rightState)
+        #######################################################
+
+
+        isSameTree.append(int(str(simHook.trees[i]) == str(simHook.trees[i+1])))
+        isSameTopology.append(int(leftExtLeaf == rightExtLeaf))
+        isSameState.append(int(leftState == rightState))
+        allRecPoints.append(simHook.recombinationPoints[i])
+        allRecTimes.append(simHook.recombinationTimes[i])
+        if coaSimLeafHack:
+            # commented out because this functionality has a memory leak in CoaSim
+            allRecLeaves.append(simHook.recombinationLeaves[i])
+
+
+    # run coalhmm on simulated sequences:
+    estimHook = ILS16estimationHook(minProb, maxSpan)
+    t = estimate_ils16(seq, length=SimSpec.L, NeRef=SimSpec.NeRef, r=SimSpec.r, g=SimSpec.g, u=SimSpec.u,
+                       addOutGroup=SimSpec.addOutGroup, T1=SimSpec.T1, T12=SimSpec.T12, T123=SimSpec.T123,
+                       N1=SimSpec.N1, N2=SimSpec.N2, N3=SimSpec.N3, N12=SimSpec.N12, N123=SimSpec.N123,
+                       optionsFile=os.path.abspath(coalhmmOptionsFile), hook=estimHook)
+
+    ## estimHook = CTMCestimationHook()
+    ## t = estimate_3sp_ctmc(seq, r=r, g=g, u=u, T1=T1, T2=T12, N1=N1, nstates=10, hook=estimHook)
+    ## t = estimate_untitled_3_all(seq, T1 * u, T12 * u, 1.0/(N1 * u * 2*g), r/(u*g), nstates=10)
+    ## t = estimate_untitled_3_all(seq, T1 * u, T12 * u, 1.0/(N1 * u * 2*g), r/(u*g), nstates=20, suffix= "_%s_%d" % (tag, iteration))
+    ## os.system("cp %s sequence1.fasta" % seq)
+
+    if not coaSimLeafHack:
+        recLeaves = [-1] * len(recTimes)
+        allRecLeaves = [-1] * len(recLeaves)
+
+    if t is not None:
+        stats = { 'ilsBases': estimHook.ilsBases,
+                  'non_ilsBases': estimHook.non_ilsBases,
+                  'simRecPoints': recPoints,
+                  'simRecTimes': recTimes,
+                  'simRecLeaves': recLeaves,
+                  'simFromState': fromState,
+                  'simToState': toState,
+                  #'simCoalTimes': simCoalTimes,
+                  'infRecPoints': [estimHook.startCoord[i] + (estimHook.endCoord[i] - estimHook.startCoord[i])/2.0 for i in range(len(estimHook.startCoord))],
+                  'infStartCoords': estimHook.startCoord,
+                  'infEndCoords': estimHook.endCoord,
+                  'infFromState': estimHook.fromState,
+                  'infToState': estimHook.toState,
+                  'allSimRecPoints': allRecPoints,
+                  'allSimRecTimes': allRecTimes,
+                  'allSimRecLeaves': allRecLeaves,
+                  'isSameTree': isSameTree,
+                  'isSameTopology': isSameTopology,
+                  'isSameState': isSameState,
+                  'simParameters': dict([(k, str(v[0])) for k, v in t.data.items() if k.startswith('_')]),
+                  'infParameters': dict([(k, v[0].strip()) for k, v in t.data.items() if not k.startswith('_')]),
+                  'seqLength': SimSpec.L }
+    #               'simParameters': dict([(k, v) for k, v in t.data.items() if k.startswith('_')]),
+    #               'infParameters': dict([(k, v) for k, v in t.data.items() if not k.startswith('_')])}
+
+        with open(outp, 'w') as f:
+            pickle.dump(stats, f)
+
+#         os.system("cp " + seq + "* .")
+#         print seq
+#         sys.exit()
+
+    for f in glob.glob(seq + "*"):
+        os.unlink(f)
+
 
 
 def runSimulationsWithCoaSimAndILSCTMC(inp, outp, bppseqgenOptionsFile):

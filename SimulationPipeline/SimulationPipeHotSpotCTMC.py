@@ -452,6 +452,55 @@ class ILS09estimationHook(object):
         self.ilsBases = ilsBases
         self.non_ilsBases = non_ilsBases
 
+
+class ILS16estimationHook(object):
+
+    def __init__(self, minProb, maxSpan):
+        self.minProb = minProb
+        self.maxSpan = maxSpan
+        self.startCoord = []
+        self.endCoord = []
+        self.fromState = list()
+        self.toState = list()
+        self.infStates = list()
+
+    def run(self, prefix, args):
+        prevInferredState = None
+        prevState = None
+        prevPos = None
+        f = open(prefix + ".posterior.tbl", 'r')
+        f.next() # remove header
+        prevPos = 0
+        pos = 0
+        ilsBases = 0
+        non_ilsBases = 0
+
+        for l in f:
+            lst = map(float, l.split()[1:5])
+            #argmax = lambda lst: max(izip(lst, xrange(len(lst))))[1]
+            maxProb = max(lst)
+            self.infStates.append(lst.index(maxProb))
+            state = lst.index(maxProb)
+            assert state <= 3, state
+            if state <= 1:
+                non_ilsBases += 1
+            elif state >= 2:
+                ilsBases += 1
+
+            if maxProb > self.minProb:
+                #if prevState is not None and state != prevState:
+                if prevState is not None and state != prevState and pos - prevPos < self.maxSpan:
+                    self.startCoord.append(prevPos)
+                    self.endCoord.append(pos)
+                    self.fromState.append(prevState)
+                    self.toState.append(state)
+                prevState, prevPos = state, pos
+            pos += 1
+
+        self.ilsBases = ilsBases
+        self.non_ilsBases = non_ilsBases
+
+
 # class CTMCestimationHook(object):
 # 
 #     def __init__(self):
@@ -1134,6 +1183,82 @@ def estimate_ils09(sequence, **args):
                               _theta2=N123 * u * 2 * g, _rho=r / (u * g), _theta12=N12 * u * 2 * g)
 
     return Table.Table().load_kv(sequence + ".user.txt").join(input_t)
+
+
+def estimate_ils16(sequence, **args):
+    #test if all args are there
+    if "NeRef" not in args:
+        raise Exception("'NeRef' parameter required")
+
+    if "r" not in args:
+        raise Exception("'r' (recombination rate?) parameter required")
+
+    if "g" not in args:
+        raise Exception("'g' (Generation time) parameter required")
+
+    if "u" not in args:
+        raise Exception("'u' (mutation rate) parameter required")
+
+    if "optionsFile" not in args:
+        raise Exception("'optionsFile' parameter required")
+
+    #test T's and N's
+    count = 0;
+    t = "T1"
+    while t in args:
+        count
+        t = t + str(len(t))
+
+    #Test N
+    n = "N"
+    for i in range(1, count+1):
+        if "N" + str(i) not in args:
+            raise Exception("'N" + str(i) + "' parameter required")
+
+
+    cmd = coalhmm_exe + " param=" + args["optionsFile"]
+
+    NeRef = args["NeRef"]
+    g = args["g"]
+    u = args["u"]
+    r = args["r"]
+    T1 = args["T1"] / g / (2*NeRef)
+    T12 = args["T12"] / g / (2*NeRef)
+    T123 = args["T123"] / g / (2*NeRef)
+    N1 = args["N1"]
+    N12 = args["N12"]
+    N123 = args["N123"]
+
+    param = "tau1=" + str(T1 * u * 2 * NeRef * g) + " tau2=" + str((T12-T1) * u * 2 * NeRef * g) + " c2=" +\
+        str(((T123- T12) * NeRef - 4/3 * N123) * u * 2 * g) + " theta1=" + str(N12 * u * 2 * g) + " theta2=" + \
+        str(N123 * u * 2 * g) + " rho=" + str(r / (u * g)) + " theta12=" + str(N12 * u * 2 * g) + " DATA=" + sequence
+
+#     p = subprocess.Popen(cmd + " " + param, shell=True, cwd=coalhmm_dir)
+#     p.wait()
+#     print cmd + " " + param
+#     sys.exit()
+    p = subprocess.Popen(cmd + " " + param, env=os.environ, shell=True, cwd=coalhmm_dir, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    sleep(30)
+    #print stdout
+    #print stderr
+    if "Exception" in stderr or "Oups... something abnormal happened!" in stderr or "Optimization failed because likelihood function returned NaN" in stderr:
+        print stderr
+        return None
+    if "Exception" in stdout:
+        print stdout
+        return None
+#    sequence = '/var/folders/8j/_27xl8wd6vn5krws659zcr1h0000gn/T/tmpAkZskf'
+    if "hook" in args:
+        args["hook"].run(sequence, args)
+
+    input_t = Table.Table().add_row(_tau1=T1 * u * 2 * NeRef * g, _tau2=(T12-T1) * u * 2 * NeRef * g, \
+                              _c2=((T123- T12) * NeRef - 4/3 * N123) * u * 2 * g, _theta1=N12 * u * 2 * g, \
+                              _theta2=N123 * u * 2 * g, _rho=r / (u * g), _theta12=N12 * u * 2 * g)
+
+    return Table.Table().load_kv(sequence + ".user.txt").join(input_t)
+
+
 
 
 def estimate_ctmcILS(sequence, **args):
