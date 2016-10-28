@@ -28,14 +28,14 @@ from newick.tree import Leaf
 
 coalhmm_exe = "./coalhmm --noninteractive=yes"
 #coalhmm_dir = os.path.join(os.path.dirname(__file__), 'coalhmmOSX')
-coalhmm_dir = "."
+coalhmm_dir = "./bpp_coalhmm"
 
 macs_exe = "./macs-patched"
 macs_dir = "./scripts/Simulation/macsOSX"
 
 bppseqgen_exe = "./bppseqgen --noninteractive=yes" # specify exe in current dir
 #bppseqgen_dir = os.path.join(os.path.dirname(__file__), 'bppseqgenOSX')
-bppseqgen_dir = "."
+bppseqgen_dir = "./bpp_coalhmm"
 
 
 #
