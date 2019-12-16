@@ -1,7 +1,7 @@
 
 import unittest
-import lexer
-from parser import _Parser, AbstractHandler, parse
+from . import lexer
+from .parser import _Parser, AbstractHandler, parse
 
 class ParserTest(unittest.TestCase):
     ''' Test of the _Parser class. '''

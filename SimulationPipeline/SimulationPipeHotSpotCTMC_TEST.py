@@ -1,8 +1,8 @@
 import CoaSim, os, tempfile, Table, sys, subprocess
-import cPickle as pickle
+import pickle as pickle
 from CoaSim.popStructure import Population as P, Sample as S, Merge as M
-from newick import *
-from itertools import izip
+from .newick import *
+
 from numpy import arange
 
 
@@ -91,11 +91,11 @@ class ILSestimationHook(object):
         prevState = None
         prevPos = None
         f = open(prefix + ".posterior.tbl", 'r')
-        f.next() # remove header
+        next(f) # remove header
         prevPos = 0
         pos = 0
         for l in f:
-            lst = map(float, l.split()[1:5])
+            lst = list(map(float, l.split()[1:5]))
             #argmax = lambda lst: max(izip(lst, xrange(len(lst))))[1]
             maxProb = max(lst)
             self.infStates.append(lst.index(maxProb))
@@ -130,11 +130,11 @@ class CTMCestimationHook(object):
         prevState = None
         prevPos = None
         f = open(prefix + "_pds.txt", 'r')
-        f.next() # remove header
+        next(f) # remove header
         prevPos = 0
         pos = 0
         for l in f:
-            lst = map(float, l.split()[1:5])
+            lst = list(map(float, l.split()[1:5]))
             #argmax = lambda lst: max(izip(lst, xrange(len(lst))))[1]
             maxProb = max(lst)
             self.infStates.append(lst.index(maxProb))
@@ -540,7 +540,7 @@ def simulateMacs(**args):
     " -n 1 " + str(args["N1"] / args["NeRef"]) + " -n 2 " + str(args["N1"] / args["NeRef"]) + " -n 3 " + str(args["N1"] / args["NeRef"]) +  \
     " -ej " + str(args["tau1"]) + " 2 3 -en " + str(args["tau1"]) + " 2 " + str(args["N12"] / args["NeRef"]) +  " -en " + str(args["tau1"]) + " 3 " + str(args["N12"] / args["NeRef"]) + \
     " -ej " + str(args["tau12"] ) +" 3 1 -en " + str(args["tau12"]) + " 1 " + str(args["N123"] / args["NeRef"]) 
-    print cmd
+    print(cmd)
     os.system(cmd + " > " + outputdir + "/macs.out 2> " + outputdir +"/macs.err")
     
     trees = list()
@@ -639,10 +639,10 @@ def estimate_ils09(sequence, **args):
 #     print cmd + " " + param
     p = subprocess.Popen(cmd + " " + param, env=os.environ, shell=True, cwd=coalhmm_dir, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     stdout, stderr = p.communicate()
-    print stdout
-    print stderr
+    print(stdout)
+    print(stderr)
     if "Oups... something abnormal happened!" in stderr or "Optimization failed because likelihood function returned NaN" in stderr:
-        print "estimation failed"
+        print("estimation failed")
         return None
 
 

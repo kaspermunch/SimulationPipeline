@@ -1,9 +1,9 @@
 
 import unittest
-import lexer
-import parser
-from tree import *
-from tree import _TreeBuilder
+from . import lexer
+from . import parser
+from .tree import *
+from .tree import _TreeBuilder
 
 class BuilderTest(unittest.TestCase):
     ''' Test of the _TreeBuilder (and Leaf and Tree) class. '''

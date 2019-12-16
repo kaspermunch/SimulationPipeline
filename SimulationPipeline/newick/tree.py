@@ -6,8 +6,8 @@ Copyright (C) 2003-2008, Thomas Mailund <mailund@birc.au.dk>
 This module contains the representation of trees and a parser for
 creating trees from a Newick string or file. '''
 
-import lexer
-import parser
+from . import lexer
+from . import parser
 
 
 class Tree(object):
@@ -219,5 +219,5 @@ def add_distance_from_root(tree):
 
 if __name__ == '__main__':
     import unittest
-    from treetest import test_suite
+    from .treetest import test_suite
     unittest.TextTestRunner(verbosity=2).run(test_suite)

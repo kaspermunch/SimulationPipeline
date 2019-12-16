@@ -1,12 +1,12 @@
 
 import sys, os, glob
-from SimulationPipeHotSpotCTMC import coaSimLeafHack
+from .SimulationPipeHotSpotCTMC import coaSimLeafHack
 if coaSimLeafHack:
     sys.path.insert(0, '/Users/kasper/Desktop/coasim_trunk/Python/build/lib.macosx-10.5-x86_64-2.7')
 import CoaSim
 from CoaSim.popStructure import Population as P, Sample as S, Merge as M, Migration as Mi, Growth
-from SimulationPipeHotSpotCTMC import *
-from newick.tree import Leaf
+from .SimulationPipeHotSpotCTMC import *
+from .newick.tree import Leaf
 from CoalhmmPipeline import Table
 from MultiPurpose import Needle
 from optparse import OptionParser
@@ -155,7 +155,7 @@ def runSimulationsWithMaCS(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bpps
 
     import imp
     SimSpec = imp.new_module("SimSpec")
-    exec open(inp).read() in SimSpec.__dict__
+    exec(open(inp).read(), SimSpec.__dict__)
     sys.modules[SimSpec] = "SimSpec"
 
     # simulate:
@@ -245,8 +245,8 @@ def runSimulationsWithMaCS(inp, outp, minProb, maxSpan, coalhmmOptionsFile, bpps
               'infEndCoords': estimHook.endCoord,
               'infFromState': estimHook.fromState,
               'infToState': estimHook.toState,
-              'simParameters': dict([(k, str(v[0])) for k, v in t.data.items() if k.startswith('_')]),
-              'infParameters': dict([(k, v[0].strip()) for k, v in t.data.items() if not k.startswith('_')]),
+              'simParameters': dict([(k, str(v[0])) for k, v in list(t.data.items()) if k.startswith('_')]),
+              'infParameters': dict([(k, v[0].strip()) for k, v in list(t.data.items()) if not k.startswith('_')]),
               'seqLength': SimSpec.L }
 
     with open(outp, 'w') as f:
@@ -273,7 +273,7 @@ def runSimulationsWithCoaSimAndILS09(inp, outp, minProb, maxSpan, coalhmmOptions
 
     import imp
     SimSpec = imp.new_module("SimSpec")
-    exec open(inp).read() in SimSpec.__dict__
+    exec(open(inp).read(), SimSpec.__dict__)
     sys.modules[SimSpec] = "SimSpec"
     
     def spec(**args):
@@ -409,8 +409,8 @@ def runSimulationsWithCoaSimAndILS09(inp, outp, minProb, maxSpan, coalhmmOptions
                   'isSameTree': isSameTree,
                   'isSameTopology': isSameTopology,
                   'isSameState': isSameState,
-                  'simParameters': dict([(k, str(v[0])) for k, v in t.data.items() if k.startswith('_')]),
-                  'infParameters': dict([(k, v[0].strip()) for k, v in t.data.items() if not k.startswith('_')]),
+                  'simParameters': dict([(k, str(v[0])) for k, v in list(t.data.items()) if k.startswith('_')]),
+                  'infParameters': dict([(k, v[0].strip()) for k, v in list(t.data.items()) if not k.startswith('_')]),
                   'seqLength': SimSpec.L }
     #               'simParameters': dict([(k, v) for k, v in t.data.items() if k.startswith('_')]),
     #               'infParameters': dict([(k, v) for k, v in t.data.items() if not k.startswith('_')])}
@@ -441,7 +441,7 @@ def runSimulationsWithCoaSimAndILS16(inp, outp, minProb, maxSpan, coalhmmOptions
 
     import imp
     SimSpec = imp.new_module("SimSpec")
-    exec open(inp).read() in SimSpec.__dict__
+    exec(open(inp).read(), SimSpec.__dict__)
     sys.modules[SimSpec] = "SimSpec"
 
     def spec(**args):
@@ -577,8 +577,8 @@ def runSimulationsWithCoaSimAndILS16(inp, outp, minProb, maxSpan, coalhmmOptions
                   'isSameTree': isSameTree,
                   'isSameTopology': isSameTopology,
                   'isSameState': isSameState,
-                  'simParameters': dict([(k, str(v[0])) for k, v in t.data.items() if k.startswith('_')]),
-                  'infParameters': dict([(k, v[0].strip()) for k, v in t.data.items() if not k.startswith('_')]),
+                  'simParameters': dict([(k, str(v[0])) for k, v in list(t.data.items()) if k.startswith('_')]),
+                  'infParameters': dict([(k, v[0].strip()) for k, v in list(t.data.items()) if not k.startswith('_')]),
                   'seqLength': SimSpec.L }
     #               'simParameters': dict([(k, v) for k, v in t.data.items() if k.startswith('_')]),
     #               'infParameters': dict([(k, v) for k, v in t.data.items() if not k.startswith('_')])}
@@ -604,7 +604,7 @@ def runSimulationsWithCoaSimAndILSCTMC(inp, outp, bppseqgenOptionsFile):
 
     import imp
     SimSpec = imp.new_module("SimSpec")
-    exec open(inp).read() in SimSpec.__dict__
+    exec(open(inp).read(), SimSpec.__dict__)
     sys.modules[SimSpec] = "SimSpec"
     
     def spec(**args):
@@ -710,11 +710,11 @@ def runSimulationsWithCoaSimAndILSCTMC(inp, outp, bppseqgenOptionsFile):
     if t is not None:
 
         from MultiPurpose import TimeSeries as TS
-        observedTreeChanges = zip( *TS.summaryStats(allRecPoints, binIdx=0, binSize=SimSpec.winsize, stats=lambda buf: TS.poissonRateWithCI(buf, binSize=SimSpec.winsize)) )[2]
-        observedTopologyChanges = zip( *TS.summaryStats(recPoints, binIdx=0, binSize=SimSpec.winsize, stats=lambda buf: TS.poissonRateWithCI(buf, binSize=SimSpec.winsize)) )[2]
+        observedTreeChanges = list(zip( *TS.summaryStats(allRecPoints, binIdx=0, binSize=SimSpec.winsize, stats=lambda buf: TS.poissonRateWithCI(buf, binSize=SimSpec.winsize)) ))[2]
+        observedTopologyChanges = list(zip( *TS.summaryStats(recPoints, binIdx=0, binSize=SimSpec.winsize, stats=lambda buf: TS.poissonRateWithCI(buf, binSize=SimSpec.winsize)) ))[2]
 
         for tree, topol, exp in zip(observedTreeChanges, observedTopologyChanges, estimHook.expectedTransitions):
-            print tree, topol, exp
+            print(tree, topol, exp)
         
         stats = { 'simRecPoints': recPoints,
                   'simRecTimes': recTimes,
@@ -732,8 +732,8 @@ def runSimulationsWithCoaSimAndILSCTMC(inp, outp, bppseqgenOptionsFile):
                   'observedTopologyChanges': observedTopologyChanges,
                   'expectedTransitions': estimHook.expectedTransitions,
                   'expectedTransitionsWinsize': SimSpec.winsize,                  
-                  'simParameters': dict([(k, str(v[0])) for k, v in t.data.items() if k.startswith('_')]),
-                  'infParameters': dict([(k, str(v[0])) for k, v in t.data.items() if not k.startswith('_')]),
+                  'simParameters': dict([(k, str(v[0])) for k, v in list(t.data.items()) if k.startswith('_')]),
+                  'infParameters': dict([(k, str(v[0])) for k, v in list(t.data.items()) if not k.startswith('_')]),
                   'seqLength': SimSpec.L }
 
 
@@ -796,7 +796,7 @@ def evaluateSimulations(inp, outp):
 #             continue
 #         ##################################################################################################
 
-        assert "seqLength" in stats, stats.keys()
+        assert "seqLength" in stats, list(stats.keys())
 
 #         if "seqLength" not in stats:
 #             stats["seqLength"] = 0 # this is just a hack so we can use this function for evaluating standard non-full chromosome simulations too.
@@ -891,10 +891,10 @@ def evaluateSimulations(inp, outp):
 #                         infRecPoint, infFromState, infToState, infStartCoord, infEndCoord = 'NA', 'NA', 'NA', 'NA', 'NA'
 #                 infRecPoint, infFromState, infToState, infStartCoord, infEndCoord = 'NA', 'NA', 'NA', 'NA', 'NA'
                         
-                for k, v in stats['simParameters'].items():
+                for k, v in list(stats['simParameters'].items()):
                     tableDict.setdefault(k, []).append(v)
 
-                for k, v in stats['infParameters'].items():
+                for k, v in list(stats['infParameters'].items()):
                     tableDict.setdefault(k, []).append(v)
 
 
@@ -943,7 +943,7 @@ def evaluateSimulations(inp, outp):
                         "random": int(randomShuffle),
                         "seqEnd": totalLength }
 
-                for k, v in tmp.items():
+                for k, v in list(tmp.items()):
                     tableDict.setdefault(k, []).append(v)
 
 
@@ -952,19 +952,19 @@ def evaluateSimulations(inp, outp):
 #        print len(stats['infToState']), sum(x==y for x,y in zip(map(stateMap, stats['infFromState']), map(stateMap, stats['infToState'])))
 
 
-        simRecPoints = zip(stats['simRecPoints'], stats['simFromState'],
-                           stats['simToState'], stats['simRecTimes'], stats['simRecLeaves'])
+        simRecPoints = list(zip(stats['simRecPoints'], stats['simFromState'],
+                           stats['simToState'], stats['simRecTimes'], stats['simRecLeaves']))
         # NOTE: here we delete 0 to 0 inferred events because these are not represented in simulated events we compare to
-        infRecPoints = [t for t in zip(stats['infRecPoints'], map(stateMap, stats['infFromState']),
-                                       map(stateMap, stats['infToState']), stats['infStartCoords'],
+        infRecPoints = [t for t in zip(stats['infRecPoints'], list(map(stateMap, stats['infFromState'])),
+                                       list(map(stateMap, stats['infToState'])), stats['infStartCoords'],
                                        stats['infEndCoords']) if t[1] != t[2]]
 
         if not len(infRecPoints):
-            print "WARNING: DID NOT INFER ANY RECOMBINATIONS - SKIPPING"
+            print("WARNING: DID NOT INFER ANY RECOMBINATIONS - SKIPPING")
             continue
 
         if not len(simRecPoints):
-            print "WARNING: DID NOT SIMULATE ANY RECOMBINATIONS - SKIPPING"
+            print("WARNING: DID NOT SIMULATE ANY RECOMBINATIONS - SKIPPING")
             continue
 
         randomShuffle = False
@@ -974,7 +974,7 @@ def evaluateSimulations(inp, outp):
         randomShuffle = True
 
         # get intervals between points
-        infP, infF, infT, infS, infE = zip(*infRecPoints)
+        infP, infF, infT, infS, infE = list(zip(*infRecPoints))
         intervals = [y-x for x, y in zip([0.0] + list(infP[0:-1]), infP)]
         # assign to states
         intervalsDict = dict()
@@ -984,7 +984,7 @@ def evaluateSimulations(inp, outp):
         intervalsDict.setdefault(infT[-1], []).append(stats["seqLength"] - infP[-1])
 
         # random indexes
-        indexes = range(len(infRecPoints))
+        indexes = list(range(len(infRecPoints)))
         random.shuffle(indexes)
         # build new list
         newList = list()
@@ -1014,8 +1014,8 @@ def evaluateSimulations(inp, outp):
     keys = sorted(tableDict.keys())
     values = [tableDict[k] for k in keys]
     with open(benchmarkStatsFileName, 'w') as f:
-        print >>f, "\t".join(keys)
+        print("\t".join(keys), file=f)
         for i in range(len(values[0])):
-            print >>f, "\t".join(map(str, (values[j][i] for j in range(len(keys)))))
+            print("\t".join(map(str, (values[j][i] for j in range(len(keys))))), file=f)
 
 

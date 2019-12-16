@@ -8,7 +8,7 @@ rarely need to access it in your own modules and should probably only
 use the parser or tree modules, and from those most likely only the
 objects loaded into the mail package.  '''
 
-import tokens
+from . import tokens
 import re
 
 _patterns = [
@@ -93,5 +93,5 @@ class Lexer(object):
 
 if __name__ == '__main__':
     import unittest
-    from lexertest import test_suite
+    from .lexertest import test_suite
     unittest.TextTestRunner(verbosity=2).run(test_suite)

@@ -1,6 +1,6 @@
 import CoaSim, os, tempfile, table, sys
 from CoaSim.popStructure import Population as P, Sample as S, Merge as M
-from newick import *
+from .newick import *
 
 coalhmm_exe = "~tth/local/bin/coalhmm --noninteractive=yes"
 bppseqgen_exe = "~tth/local/bin/bppseqgen --noninteractive=yes"
@@ -111,7 +111,7 @@ def bppSeqGen(trees, **args):
     for (s,e,t) in trees:
         f1.write(str(s) + " " + str(e) +" " + str(t) + ";\n")
 
-    print path1
+    print(path1)
 
     f1.close()
     
@@ -127,7 +127,7 @@ def bppSeqGen(trees, **args):
         str(args["length"]) + " input.tree.file=" + path1 + " output.sequence.file=" + path2 + \
               logfilestd
 
-    print cmd
+    print(cmd)
     os.system(cmd)
     #return path to sequence
     #todo: remove tmp file
@@ -201,7 +201,7 @@ def simulateCoasim(spec, **args):
         c = hw / ohw
 
         args["hotSpotBackgroundRate"] = args["r"] * (1-hw)/(1-ohw)
-        print >>sys.stderr, "Simulating hotspot", args["hotSpotBackgroundRate"]
+        print("Simulating hotspot", args["hotSpotBackgroundRate"], file=sys.stderr)
 
 #         # nr hotspots:
 #         nrHotSpots = 4
@@ -314,7 +314,7 @@ def estimate(sequence, **args):
         str(((T123- T12) * NeRef - 4/3 * N123) * u * 2 * g) + " theta1=" + str(N12 * u * 2 * g) + " theta2=" + \
         str(N123 * u * 2 * g) + " rho=" + str(r / (u * g)) + " theta12=" + str(N12 * u * 2 * g) + " DATA=" + sequence
 
-    print cmd + " " + param
+    print(cmd + " " + param)
     os.system(cmd + " " + param)
 
     if "hook" in args:

@@ -1,7 +1,7 @@
 
 import unittest
-import tokens
-from lexer import *
+from . import tokens
+from .lexer import *
 
 class LexerTest(unittest.TestCase):
     ''' Test of the Lexer class. '''

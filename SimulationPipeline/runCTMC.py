@@ -21,7 +21,7 @@ def transitions(T, B, S, K):
     assert S > 0 and K > 0
 
     result = zeros(K)
-    for k in xrange(K):
+    for k in range(K):
         result[k] = (T[:,k]*B).sum()
     result = result / result.sum()
     result = result * arange(1, K+1)
@@ -31,7 +31,7 @@ def read_matrix(fname, mapping=float):
     f = open(fname)
     res = []
     for line in f:
-        vals = map(mapping, line.split())
+        vals = list(map(mapping, line.split()))
         res.append(vals)
     f.close()
     res = array(res)
@@ -46,15 +46,15 @@ def zipHMM_prepare_matrices(mpi, mT, mE):
 #    print '.',
     sys.stdout.flush()
     pi = Matrix(mpi.shape[0], 1)
-    for i in xrange(mpi.shape[0]):
+    for i in range(mpi.shape[0]):
         pi[0, i] = mpi[i]
     T  = Matrix(mT.shape[0], mT.shape[1])
-    for i in xrange(mT.shape[0]):
-        for j in xrange(mT.shape[1]):
+    for i in range(mT.shape[0]):
+        for j in range(mT.shape[1]):
             T[i, j] = mT[i, j]
     E  = Matrix(mE.shape[0], mE.shape[1])
-    for i in xrange(mE.shape[0]):
-        for j in xrange(mE.shape[1]):
+    for i in range(mE.shape[0]):
+        for j in range(mE.shape[1]):
             E[i, j] = mE[i, j]
     return pi, T, E
 
@@ -125,7 +125,7 @@ def runILSctmc(seqs, **args):
 #     i_t2 = 5.95e6*u
 
     estates = 4
-    print >>sys.stderr, 'running with %d epoch states' % estates
+    print('running with %d epoch states' % estates, file=sys.stderr)
     
 #     inst = int(sys.argv[1])
 # 
@@ -154,20 +154,20 @@ def runILSctmc(seqs, **args):
     estimates = list()
     if doEstimate:
         for obs in all_obs:
-            print 'next obs:'
+            print('next obs:')
             ffd, foutname = tempfile.mkstemp()
-            print '  temp fd/name:', ffd, foutname
+            print('  temp fd/name:', ffd, foutname)
             fout = os.fdopen(ffd, 'w')
             L = len(obs)
-            for j in xrange(L-1):
+            for j in range(L-1):
                 o = obs[j]
-                print >>fout, o,
-            print >>fout, obs[j]
+                print(o, end=' ', file=fout)
+            print(obs[j], file=fout)
             fout.close()
-            print '  written, creating forwarder'
+            print('  written, creating forwarder')
             f = Forwarder.fromSequence(seqFilename = foutname, alphabetSize = len(COL_MAP))
             #f = Forwarder(seqFilename = foutname, nStates = len(modelILS.tree_map), nObservables = len(COL_MAP))
-            print '  - done.'
+            print('  - done.')
             forwarders.append(f)
             os.system("rm %s" % foutname)                                                                
 

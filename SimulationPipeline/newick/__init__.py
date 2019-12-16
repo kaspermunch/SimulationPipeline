@@ -5,14 +5,14 @@ Copyright (C) 2003-2008, Thomas Mailund <mailund@birc.au.dk>
 '''
 
 # convinience inclution of namespace...
-from lexer  import LexerError
-from parser import *
-from tree   import parse_tree
+from .lexer  import LexerError
+from .parser import *
+from .tree   import parse_tree
 
 if __name__ == '__main__':
     import unittest
-    import lexertest
-    import parsertest
+    from . import lexertest
+    from . import parsertest
 
     test_suite = unittest.TestSuite()
     test_suite.addTest(lexertest.test_suite)

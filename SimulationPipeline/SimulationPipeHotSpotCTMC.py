@@ -6,16 +6,16 @@ import sys
 if coaSimLeafHack:
     sys.path.insert(0, '/Users/kasper/Desktop/coasim_trunk/Python/build/lib.macosx-10.5-x86_64-2.7')
 import CoaSim, os, tempfile, subprocess, re, random
-import cPickle as pickle
+import pickle as pickle
 from CoaSim.popStructure import Population as P, Sample as S, Merge as M
-from newick import *
-from itertools import izip
+from .newick import *
+
 from time import sleep
 from numpy import arange
 
 from CoalhmmPipeline import Table
 
-from newick.tree import Leaf
+from .newick.tree import Leaf
 
 
 # coalhmm_exe = "~tth/local/bin/coalhmm --noninteractive=yes"
@@ -74,11 +74,11 @@ class CTMCilsHook(object):
                 Tnm_prev = Tnm_prev / Tnm_prev.sum()
                 #print around(Tnm_prev, 4)
                 #Tnm_prev = (Tnm_prev.T / Tnm_prev.sum(axis=1)).T
-                for s in xrange(S):
-                    for k in xrange(K):
+                for s in range(S):
+                    for k in range(K):
                         x = Tnm_prev[s,k] * T[s,s]
                         if k > 0:
-                            for sm in xrange(S):
+                            for sm in range(S):
                                 if sm != s:
                                     x += Tnm_prev[sm, k-1]*T[sm,s]
                         Tnm[s,k] = x*E[s, xm]
@@ -172,7 +172,7 @@ class CTMCilsHook(object):
             all_time_breakpoints, time_breakpoints = default_bps(model, c, r, t)
 
             M = []
-            for e in xrange(len(noBrPointsPerEpoch)):
+            for e in range(len(noBrPointsPerEpoch)):
                 newM = identity(nleaves)
                 newM[:] = m[e]
                 M.append(newM)
@@ -213,7 +213,7 @@ class CTMCilsHook(object):
 
         for i, w in enumerate(range(0, L-winsize, winsize)):
             nrExpected = transitions_in_window(A[w,:], B[w+winsize-1,:], w, winsize, T, E, obs)
-            print >>sys.stderr, nrExpected
+            print(nrExpected, file=sys.stderr)
             self.expectedTransitions.append(nrExpected)
 
 # 
@@ -421,14 +421,14 @@ class ILS09estimationHook(object):
         prevState = None
         prevPos = None
         f = open(prefix + ".posterior.tbl", 'r')
-        f.next() # remove header
+        next(f) # remove header
         prevPos = 0
         pos = 0
         ilsBases = 0
         non_ilsBases = 0
 
         for l in f:
-            lst = map(float, l.split()[1:5])
+            lst = list(map(float, l.split()[1:5]))
             #argmax = lambda lst: max(izip(lst, xrange(len(lst))))[1]
             maxProb = max(lst)
             self.infStates.append(lst.index(maxProb))
@@ -469,14 +469,14 @@ class ILS16estimationHook(object):
         prevState = None
         prevPos = None
         f = open(prefix + ".posterior.tbl", 'r')
-        f.next() # remove header
+        next(f) # remove header
         prevPos = 0
         pos = 0
         ilsBases = 0
         non_ilsBases = 0
 
         for l in f:
-            lst = map(float, l.split()[1:5])
+            lst = list(map(float, l.split()[1:5]))
             #argmax = lambda lst: max(izip(lst, xrange(len(lst))))[1]
             maxProb = max(lst)
             self.infStates.append(lst.index(maxProb))
@@ -1169,10 +1169,10 @@ def estimate_ils09(sequence, **args):
     #print stdout
     #print stderr
     if "Exception" in stderr or "Oups... something abnormal happened!" in stderr or "Optimization failed because likelihood function returned NaN" in stderr:
-        print stderr
+        print(stderr)
         return None
     if "Exception" in stdout:
-        print stdout
+        print(stdout)
         return None
 #    sequence = '/var/folders/8j/_27xl8wd6vn5krws659zcr1h0000gn/T/tmpAkZskf'
     if "hook" in args:
@@ -1243,10 +1243,10 @@ def estimate_ils16(sequence, **args):
     #print stdout
     #print stderr
     if "Exception" in stderr or "Oups... something abnormal happened!" in stderr or "Optimization failed because likelihood function returned NaN" in stderr:
-        print stderr
+        print(stderr)
         return None
     if "Exception" in stdout:
-        print stdout
+        print(stdout)
         return None
 #    sequence = '/var/folders/8j/_27xl8wd6vn5krws659zcr1h0000gn/T/tmpAkZskf'
     if "hook" in args:

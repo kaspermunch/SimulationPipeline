@@ -5,7 +5,7 @@ Copyright (C) 2003-2008, Thomas Mailund <mailund@birc.au.dk>
 
 This module contains the functionality for grammatical analysis. '''
 
-import tokens
+from . import tokens
 
 class ParserError(object):
     '''Exception thrown if the parser encounters an error.'''
@@ -131,7 +131,7 @@ def parse(input, event_handler):
     event_handler implements a get_result() method, parse will return
     the result of calling this after complete parsing, otherwise None
     is returned.'''
-    import lexer
+    from . import lexer
     l = lexer.Lexer(input)
     _Parser(l,event_handler).parse()
     if hasattr(event_handler,"get_result"):
@@ -142,5 +142,5 @@ def parse(input, event_handler):
 
 if __name__ == '__main__':
     import unittest
-    from parsertest import test_suite
+    from .parsertest import test_suite
     unittest.TextTestRunner(verbosity=2).run(test_suite)
